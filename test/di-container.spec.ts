@@ -73,8 +73,11 @@ describe("DiContainer", () => {
       ]);
 
       assert.equal(singletonBuildCount, 1);
-      assert.strictEqual(resA, resB);
-      assert.strictEqual(resB, resC);
+      assert.ok(resA === resB);
+      assert.ok(resB === resC);
+
+      const resD = await diConfigurator.resolve(SINGLETON_TOKEN);
+      assert.ok(resA === resD);
     });
   });
 
@@ -118,8 +121,11 @@ describe("DiContainer", () => {
         ]);
 
         assert.equal(scopedBuildCount, 1);
-        assert.strictEqual(resA, resB);
-        assert.strictEqual(resB, resC);
+        assert.ok(resA === resB);
+        assert.ok(resB === resC);
+
+        const resD = await diConfigurator.resolve(SCOPED_TOKEN);
+        assert.ok(resA === resD);
       });
     });
 

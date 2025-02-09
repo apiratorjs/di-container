@@ -1,4 +1,5 @@
 import { AsyncContext, AsyncContextStore } from "@apiratorjs/async-context";
+import { Mutex } from "async-mutex";
 import { DiContainer } from "./di-container";
 import { IDiConfigurator, IOnConstruct, IOnDispose, ServiceToken } from "./types";
 import { tokenToString } from "./utils";
@@ -10,6 +11,7 @@ export class DiConfigurator implements IDiConfigurator {
   private _singletonServiceFactories = new Map<ServiceToken, (diConfigurator: DiConfigurator) => Promise<any> | any>();
   private _requestScopeServiceFactories = new Map<ServiceToken, (diConfigurator: DiConfigurator) => Promise<any> | any>();
   private _transientFactories = new Map<ServiceToken, (diConfigurator: DiConfigurator) => Promise<any> | any>();
+  private _serviceMutexes = new Map<ServiceToken, Mutex>();
 
   public addSingleton<T>(
     token: ServiceToken<any>,
@@ -110,21 +112,30 @@ export class DiConfigurator implements IDiConfigurator {
       return this._singletonServices.get(token);
     }
 
-    // TODO: Use mutex to prevent multiple calls to the same factory. Once mutex released, check if service is already initialized again.
-
     const factory = this._singletonServiceFactories.get(token);
     if (!factory) {
       return;
     }
 
-    const service = await factory(this);
-    if ((service as IOnConstruct)?.onConstruct) {
-      await (service as IOnConstruct).onConstruct();
+    const mutex = this.getMutexFor(token);
+    const releaseMutex = await mutex.acquire();
+    try {
+      // Check if service was already initialized by another thread
+      if (this._singletonServices.has(token)) {
+        return this._singletonServices.get(token);
+      }
+
+      const service = await factory(this);
+      if ((service as IOnConstruct)?.onConstruct) {
+        await (service as IOnConstruct).onConstruct();
+      }
+
+      this._singletonServices.set(token, service);
+
+      return service;
+    } finally {
+      releaseMutex();
     }
-
-    this._singletonServices.set(token, service);
-
-    return service;
   }
 
   private async tryGetScoped<T>(token: ServiceToken): Promise<T | undefined> {
@@ -143,16 +154,25 @@ export class DiConfigurator implements IDiConfigurator {
       return store.get(token);
     }
 
-    // TODO: Use mutex to prevent multiple calls to the same factory. Once mutex released, check if service is already initialized again.
+    const mutex = this.getMutexFor(token);
+    const releaseMutex = await mutex.acquire();
+    try {
+      // Check if service was already initialized by another thread
+      if (store.has(token)) {
+        return store.get(token);
+      }
 
-    const factory = this._requestScopeServiceFactories.get(token)!;
-    const service = await factory(this);
-    if ((service as IOnConstruct)?.onConstruct) {
-      await (service as IOnConstruct).onConstruct();
+      const factory = this._requestScopeServiceFactories.get(token)!;
+      const service = await factory(this);
+      if ((service as IOnConstruct)?.onConstruct) {
+        await (service as IOnConstruct).onConstruct();
+      }
+      store.set(token, service);
+
+      return service;
+    } finally {
+      releaseMutex();
     }
-    store.set(token, service);
-
-    return service;
   }
 
   private async tryGetTransient<T>(token: ServiceToken): Promise<T | undefined> {
@@ -180,5 +200,13 @@ export class DiConfigurator implements IDiConfigurator {
         await (service as IOnDispose).onDispose();
       }
     }
+  }
+
+  private getMutexFor(token: ServiceToken): Mutex {
+    if (!this._serviceMutexes.has(token)) {
+      this._serviceMutexes.set(token, new Mutex());
+    }
+
+    return this._serviceMutexes.get(token)!;
   }
 }
