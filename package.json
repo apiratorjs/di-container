@@ -1,6 +1,6 @@
 {
   "name": "@apiratorjs/di-container",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "A lightweight, framework agnostic, asynchronous dependency injection container for JavaScript and TypeScript, featuring lazy initialization for services. Supports singleton, request-scoped, and transient service lifecycles with built-in async context management and lifecycle hooks (onConstruct/onDispose), offering a flexible, framework-agnostic solution for managing application dependencies.",
   "author": {
     "name": "Alexey Zaitsev",
@@ -20,7 +20,25 @@
   "publishConfig": {
     "access": "public"
   },
-  "keywords": [],
+  "keywords": [
+    "dependency injection",
+    "di",
+    "di-container",
+    "container",
+    "asynchronous",
+    "async",
+    "lazy initialization",
+    "singleton",
+    "scoped",
+    "transient",
+    "typescript",
+    "nodejs",
+    "framework-agnostic",
+    "async-context",
+    "lifecycle",
+    "inversion of control",
+    "ioc"
+  ],
   "type": "commonjs",
   "scripts": {
     "build": "rm -rf dist && tsc",
