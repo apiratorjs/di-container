@@ -12,7 +12,7 @@ export class DiContainer {
     initialStore: AsyncContextStore,
     callback: (diContainer: DiContainer) => Promise<any> | any
   ) {
-    await this._diConfigurator.runWithNewRequestScope(initialStore, () => callback(this));
+    return await this._diConfigurator.runWithNewRequestScope(initialStore, () => callback(this));
   }
 
   public isInRequestScopeContext(): boolean {

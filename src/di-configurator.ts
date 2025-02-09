@@ -77,9 +77,12 @@ export class DiConfigurator implements IDiConfigurator {
     initialStore: AsyncContextStore,
     callback: () => Promise<any> | any
   ) {
-    await AsyncContext.withContext(DI_CONTAINER_REQUEST_SCOPE_NAMESPACE, initialStore ?? new AsyncContextStore(), async () => {
-      await callback();
-      await this.disposeScopedServices();
+    return await AsyncContext.withContext(DI_CONTAINER_REQUEST_SCOPE_NAMESPACE, initialStore ?? new AsyncContextStore(), async () => {
+      try {
+        return await callback();
+      } finally {
+        await this.disposeScopedServices();
+      }
     });
   }
 

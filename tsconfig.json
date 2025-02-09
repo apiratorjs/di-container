@@ -21,7 +21,8 @@
   },
   "include": [
     "src",
-    "test"
+    "test",
+    "samples"
   ],
   "exclude": [
     "node_modules",

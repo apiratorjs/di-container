@@ -16,8 +16,8 @@ describe("DiContainer", () => {
   let scopedBuildCount: number;
   let transientBuildCount: number;
 
-  const runScope = async (callback: () => Promise<void>) => {
-    await diConfigurator.runWithNewRequestScope(new AsyncContextStore(), callback);
+  const runScope = async (callback: () => Promise<any>) => {
+    return await diConfigurator.runWithNewRequestScope(new AsyncContextStore(), callback);
   };
 
   beforeEach(() => {
@@ -121,6 +121,26 @@ describe("DiContainer", () => {
         assert.strictEqual(resA, resB);
         assert.strictEqual(resB, resC);
       });
+    });
+
+    it("should return a value from runWithNewRequestScope", async () => {
+      const returnValue = await runScope(async () => {
+        return Promise.resolve("scope-result");
+      });
+      assert.equal(returnValue, "scope-result");
+    });
+
+    it("should throw with correct error message when resolving a scoped service outside a request scope", async () => {
+      await assert.rejects(
+        diConfigurator.resolve(SCOPED_TOKEN),
+        (err: Error) => {
+          assert.match(
+            err.message,
+            /Cannot resolve request-scoped service '.*' outside of a request scope\. It is likely that a singleton or transient service is trying to inject a request-scoped dependency\./
+          );
+          return true;
+        }
+      );
     });
   });
 

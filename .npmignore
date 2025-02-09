@@ -6,5 +6,6 @@ package-lock.json
 tsconfig.json
 test/
 src/
+samples/
 *.test.ts
 *.test.js
