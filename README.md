@@ -100,8 +100,8 @@ For services registered as scoped, you must resolve them within a request scope:
 ```typescript
 import { AsyncContextStore } from "@apiratorjs/async-context";
 
-await diConfigurator.runWithNewRequestScope(new AsyncContextStore(), async () => {
-  const scopedInstance = await diConfigurator.resolve("MY_SCOPED");
+await diContainer.runWithNewRequestScope(new AsyncContextStore(), async () => {
+  const scopedInstance = await diContainer.resolve("MY_SCOPED");
   console.log(scopedInstance);
 });
 ```
