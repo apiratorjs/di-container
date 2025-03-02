@@ -56,6 +56,6 @@
   },
   "dependencies": {
     "@apiratorjs/async-context": "^1.1.2",
-    "@apiratorjs/locking": "^1.1.1"
+    "@apiratorjs/locking": "^1.1.2"
   }
 }
