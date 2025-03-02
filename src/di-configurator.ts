@@ -1,8 +1,8 @@
 import { AsyncContext, AsyncContextStore } from "@apiratorjs/async-context";
-import { Mutex } from "async-mutex";
 import { DiContainer } from "./di-container";
 import { IDiConfigurator, IOnConstruct, IOnDispose, ServiceToken } from "./types";
 import { tokenToString } from "./utils";
+import { Mutex } from "@apiratorjs/locking";
 
 const DI_CONTAINER_REQUEST_SCOPE_NAMESPACE = "DI_CONTAINER_REQUEST_SCOPE_NAMESPACE";
 
@@ -118,7 +118,7 @@ export class DiConfigurator implements IDiConfigurator {
     }
 
     const mutex = this.getMutexFor(token);
-    const releaseMutex = await mutex.acquire();
+    await mutex.acquire();
     try {
       // Check if service was already initialized by another thread
       if (this._singletonServices.has(token)) {
@@ -134,7 +134,7 @@ export class DiConfigurator implements IDiConfigurator {
 
       return service;
     } finally {
-      releaseMutex();
+      await mutex.release();
     }
   }
 
@@ -155,7 +155,7 @@ export class DiConfigurator implements IDiConfigurator {
     }
 
     const mutex = this.getMutexFor(token);
-    const releaseMutex = await mutex.acquire();
+    await mutex.acquire();
     try {
       // Check if service was already initialized by another thread
       if (store.has(token)) {
@@ -171,7 +171,7 @@ export class DiConfigurator implements IDiConfigurator {
 
       return service;
     } finally {
-      releaseMutex();
+      await mutex.release();
     }
   }
 
