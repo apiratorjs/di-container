@@ -118,8 +118,8 @@ export class DiConfigurator implements IDiConfigurator {
     }
 
     const mutex = this.getMutexFor(token);
-    await mutex.acquire();
-    try {
+
+    return mutex.runExclusive(async () => {
       // Check if service was already initialized by another thread
       if (this._singletonServices.has(token)) {
         return this._singletonServices.get(token);
@@ -133,9 +133,7 @@ export class DiConfigurator implements IDiConfigurator {
       this._singletonServices.set(token, service);
 
       return service;
-    } finally {
-      await mutex.release();
-    }
+    });
   }
 
   private async tryGetScoped<T>(token: ServiceToken): Promise<T | undefined> {
@@ -155,8 +153,8 @@ export class DiConfigurator implements IDiConfigurator {
     }
 
     const mutex = this.getMutexFor(token);
-    await mutex.acquire();
-    try {
+
+    return mutex.runExclusive(async () => {
       // Check if service was already initialized by another thread
       if (store.has(token)) {
         return store.get(token);
@@ -170,9 +168,7 @@ export class DiConfigurator implements IDiConfigurator {
       store.set(token, service);
 
       return service;
-    } finally {
-      await mutex.release();
-    }
+    });
   }
 
   private async tryGetTransient<T>(token: ServiceToken): Promise<T | undefined> {
