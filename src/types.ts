@@ -28,7 +28,7 @@ export interface IDiModule {
 
 export type Lifetime = "singleton" | "scoped" | "transient";
 
-export interface ModuleOptions {
+export type ModuleOptions = {
   imports?: IDiModule[];
   providers?: Array<{
     token: ServiceToken;
