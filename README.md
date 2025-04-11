@@ -25,6 +25,7 @@ A lightweight dependency injection container for JavaScript and TypeScript with 
     - **Request-Scoped:** Supports both onConstruct() and onDispose() hooks.
     - **Transient:** Supports only onConstruct() hooks.
 - **Concurrency Safety:** Designed to avoid race conditions during lazy instantiation.
+- **Modular Organization:** Services can be organized into modules, allowing for better separation of concerns and reusability.
 
 ---
 
