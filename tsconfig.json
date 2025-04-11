@@ -22,7 +22,7 @@
   "include": [
     "src",
     "test",
-    "samples"
+    "examples"
   ],
   "exclude": [
     "node_modules",

@@ -1,6 +1,6 @@
 import { AsyncContext, AsyncContextStore } from "@apiratorjs/async-context";
 import { DiContainer } from "./di-container";
-import { IDiConfigurator, IOnConstruct, IOnDispose, ServiceToken } from "./types";
+import { IDiConfigurator, IDiModule, IOnConstruct, IOnDispose, ServiceToken } from "./types";
 import { tokenToString } from "./utils";
 import { Mutex } from "@apiratorjs/locking";
 import { CircularDependencyError } from "./errors";
@@ -14,6 +14,7 @@ export class DiConfigurator implements IDiConfigurator {
   private _transientFactories = new Map<ServiceToken, (diConfigurator: DiConfigurator) => Promise<any> | any>();
   private _serviceMutexes = new Map<ServiceToken, Mutex>();
   private _resolutionChains = new Map<AsyncContextStore | undefined, Set<ServiceToken>>();
+  private _registeredModules = new Set<IDiModule>();
 
   public addSingleton<T>(
     token: ServiceToken<any>,
@@ -50,6 +51,18 @@ export class DiConfigurator implements IDiConfigurator {
     factory: (container: DiConfigurator) => Promise<T> | T
   ) {
     this._transientFactories.set(token, factory);
+
+    return this;
+  }
+
+  public addModule(module: IDiModule) {
+    if (this._registeredModules.has(module)) {
+      return this;
+    }
+
+    this._registeredModules.add(module);
+
+    module.register(this);
 
     return this;
   }

@@ -22,6 +22,21 @@ export interface IOnDispose {
   onDispose(): Promise<void> | void;
 }
 
+export interface IDiModule {
+  register(configurator: IDiConfigurator): void;
+}
+
+export type Lifetime = "singleton" | "scoped" | "transient";
+
+export interface ModuleOptions {
+  imports?: IDiModule[];
+  providers?: Array<{
+    token: ServiceToken;
+    useFactory: (container: DiConfigurator) => Promise<any> | any;
+    lifetime: Lifetime;
+  }>;
+}
+
 export interface IDiConfigurator {
   addSingleton<T>(
     token: ServiceToken,
@@ -39,6 +54,8 @@ export interface IDiConfigurator {
     token: ServiceToken,
     factory: (diConfigurator: DiConfigurator) => Promise<T> | T
   ): this;
+
+  addModule(module: IDiModule): this;
 
   resolve<T>(token: ServiceToken<T>): Promise<T>;
 
