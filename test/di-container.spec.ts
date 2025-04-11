@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { AsyncContextStore } from "@apiratorjs/async-context";
 import { DiConfigurator, DiContainer } from "../src";
 import { IOnConstruct, IOnDispose, ServiceToken } from "../src/types";
+import { CircularDependencyError } from "../src/errors";
 
 describe("DiContainer", () => {
   const SINGLETON_TOKEN: ServiceToken = "SINGLETON_TOKEN";
@@ -250,6 +251,157 @@ describe("DiContainer", () => {
         // After the second scope ends, onDispose should have been called one more time.
         assert.equal(onDisposeCount, 2, "onDispose called once after 2nd scope");
       });
+    });
+  });
+
+  describe("Circular Dependencies", () => {
+    it("should detect and throw CircularDependencyError for direct circular dependency", async () => {
+      const CIRCULAR_A = "CIRCULAR_A";
+      const CIRCULAR_B = "CIRCULAR_B";
+
+      // A depends on B, B depends on A
+      diConfigurator.addSingleton(CIRCULAR_A, async (di) => {
+        await di.resolve(CIRCULAR_B);
+        return { name: "service-a" };
+      });
+
+      diConfigurator.addSingleton(CIRCULAR_B, async (di) => {
+        await di.resolve(CIRCULAR_A);
+        return { name: "service-b" };
+      });
+
+      await assert.rejects(
+        diConfigurator.resolve(CIRCULAR_A),
+        (err: any) => {
+          assert.ok(err instanceof CircularDependencyError);
+          assert.ok(err.chain?.includes(CIRCULAR_A), "Error chain should include token A");
+          assert.ok(err.chain?.includes(CIRCULAR_B), "Error chain should include token B");
+          return true;
+        }
+      );
+    });
+
+    it("should detect and throw CircularDependencyError for indirect circular dependencies", async () => {
+      const CIRCULAR_B = "CIRCULAR_B";
+      const CIRCULAR_C = "CIRCULAR_C";
+      const CIRCULAR_D = "CIRCULAR_D";
+
+      // Service B depends on C, C depends on D, D depends on B (creating a cycle)
+      diConfigurator.addSingleton(CIRCULAR_B, async (di) => {
+        await di.resolve(CIRCULAR_C);
+        return { name: "service-b" };
+      });
+
+      diConfigurator.addSingleton(CIRCULAR_C, async (di) => {
+        await di.resolve(CIRCULAR_D);
+        return { name: "service-c" };
+      });
+
+      diConfigurator.addSingleton(CIRCULAR_D, async (di) => {
+        await di.resolve(CIRCULAR_B);
+        return { name: "service-d" };
+      });
+
+      await assert.rejects(
+        diConfigurator.resolve(CIRCULAR_B),
+        (err: any) => {
+          assert.ok(err instanceof CircularDependencyError);
+          const chain = err.chain;
+          assert.ok(Array.isArray(chain), "Error chain should be an array");
+
+          // Verify the circular dependency chain
+          assert.ok(chain.includes(CIRCULAR_B), "Chain should include B");
+          assert.ok(chain.includes(CIRCULAR_C), "Chain should include C");
+          assert.ok(chain.includes(CIRCULAR_D), "Chain should include D");
+
+          return true;
+        }
+      );
+    });
+
+    it("should not throw for non-circular dependencies", async () => {
+      const NON_CIRCULAR_A = "NON_CIRCULAR_A";
+      const NON_CIRCULAR_B = "NON_CIRCULAR_B";
+
+      diConfigurator.addSingleton(NON_CIRCULAR_A, async (di) => {
+        await di.resolve(NON_CIRCULAR_B);
+        return { name: "service-a" };
+      });
+
+      diConfigurator.addSingleton(NON_CIRCULAR_B, async () => {
+        return { name: "service-b" };
+      });
+
+      // This should not throw
+      const serviceA = await diConfigurator.resolve(NON_CIRCULAR_A);
+      assert.deepEqual(serviceA, { name: "service-a" });
+    });
+
+    it("should handle parallel requests without false circular dependency detection", async () => {
+      const PARALLEL_TOKEN = "PARALLEL_TOKEN";
+      let counter = 0;
+
+      diConfigurator.addSingleton(PARALLEL_TOKEN, async () => {
+        counter++;
+        // Simulate some async work
+        await new Promise(resolve => setTimeout(resolve, 10));
+        return { name: `parallel-service-${counter}` };
+      });
+
+      // Request the same service in parallel
+      const [result1, result2, result3] = await Promise.all([
+        diConfigurator.resolve(PARALLEL_TOKEN),
+        diConfigurator.resolve(PARALLEL_TOKEN),
+        diConfigurator.resolve(PARALLEL_TOKEN)
+      ]);
+
+      // Should be the same instance, created only once
+      assert.strictEqual(result1, result2);
+      assert.strictEqual(result2, result3);
+      assert.equal(counter, 1, "Service factory should be called only once");
+    });
+  });
+
+  describe("Service Override", () => {
+    it("should use only the last registered implementation for singleton services", async () => {
+      diConfigurator.addSingleton(SINGLETON_TOKEN, async () => {
+        return { name: "first-singleton-service" };
+      });
+
+      diConfigurator.addSingleton(SINGLETON_TOKEN, async () => {
+        return { name: "overridden-singleton-service" };
+      });
+
+      const instance = await diConfigurator.resolve(SINGLETON_TOKEN);
+      assert.deepEqual(instance, { name: "overridden-singleton-service" });
+    });
+
+    it("should use only the last registered implementation for scoped services", async () => {
+      diConfigurator.addScoped(SCOPED_TOKEN, async () => {
+        return { name: "first-scoped-service" };
+      });
+
+      diConfigurator.addScoped(SCOPED_TOKEN, async () => {
+        return { name: "overridden-scoped-service" };
+      });
+
+      await runScope(async () => {
+        const instance = await diConfigurator.resolve(SCOPED_TOKEN);
+        assert.deepEqual(instance, { name: "overridden-scoped-service" });
+      });
+    });
+
+    it("should use only the last registered implementation for transient services", async () => {
+      diConfigurator.addTransient(TRANSIENT_TOKEN, async () => {
+        return { name: "first-transient-service" };
+      });
+
+      diConfigurator.addTransient(TRANSIENT_TOKEN, async () => {
+        return { name: "overridden-transient-service" };
+      });
+
+      const instance = await diConfigurator.resolve(TRANSIENT_TOKEN);
+      assert.deepEqual(instance, { name: "overridden-transient-service" });
     });
   });
 });

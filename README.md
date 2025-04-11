@@ -22,6 +22,7 @@ flexible solution for managing application dependencies.
 - **Lazy Initialization:** Services are only created when requested.
 - **Async Context Management:** Leverages [@apiratorjs/async-context](https://github.com/apiratorjs/async-context) to
   manage request scopes.
+- **Circular Dependency Detection:** Automatically detects and reports circular dependencies with detailed chain information through `CircularDependencyError`.
 - **Lifecycle Hooks:** Services can implement onConstruct() and onDispose() for custom initialization and cleanup.
     - **Singleton:** Supports both onConstruct() and onDispose() hooks.
     - **Request-Scoped:** Supports both onConstruct() and onDispose() hooks.
@@ -129,6 +130,55 @@ diConfigurator.addSingleton("HOOKED_SINGLETON", async () => {
 
 When the service is resolved for the first time, onConstruct() is called; later, when the container disposes of the
 service, onDispose() is invoked.
+
+### Service Overrides
+
+When registering multiple services with the same token, only the last registered implementation will be used:
+
+```typescript
+// This implementation will be overridden
+diConfigurator.addSingleton("MY_SERVICE", async () => {
+  return new FirstImplementation();
+});
+
+// This implementation will be used when resolving MY_SERVICE
+diConfigurator.addSingleton("MY_SERVICE", async () => {
+  return new SecondImplementation();
+});
+
+// This works the same way for all service types (singleton, scoped, transient)
+```
+
+This behavior can be useful for overriding services in testing scenarios or when customizing default implementations.
+
+### Circular Dependency Detection
+
+The container automatically detects circular dependencies during service resolution and throws a `CircularDependencyError` with detailed information about the dependency chain:
+
+```typescript
+// This would create a circular dependency
+diConfigurator.addSingleton("ServiceA", async (di) => {
+  await di.resolve("ServiceB");
+  return new ServiceA();
+});
+
+diConfigurator.addSingleton("ServiceB", async (di) => {
+  await di.resolve("ServiceA");
+  return new ServiceB();
+});
+
+// This will throw CircularDependencyError
+try {
+  await diConfigurator.resolve("ServiceA");
+} catch (error) {
+  if (error instanceof CircularDependencyError) {
+    // error.chain contains the full dependency chain: ["ServiceA", "ServiceB", "ServiceA"]
+    console.error(`Circular dependency detected: ${error.chain.join(" -> ")}`);
+  }
+}
+```
+
+The error provides a complete dependency chain for debugging purposes, making it easier to identify and fix circular dependencies in your application.
 
 ### Basic Example
 
