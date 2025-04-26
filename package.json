@@ -1,6 +1,6 @@
 {
   "name": "@apiratorjs/di-container",
-  "version": "1.2.8",
+  "version": "1.2.9",
   "description": "A lightweight dependency injection container for JavaScript and TypeScript with powerful features: modular organization with DiModule.create, lazy initialization, automatic circular dependency detection, and multiple service lifecycles (singleton, request-scoped, transient). Includes built-in async context management, lifecycle hooks (onConstruct/onDispose), and remains completely framework-agnostic for flexible application architecture.",
   "author": {
     "name": "Oleksii Zaitsev",
@@ -61,7 +61,7 @@
     "typescript": "^5.7.3"
   },
   "dependencies": {
-    "@apiratorjs/async-context": "^1.1.4",
+    "@apiratorjs/async-context": "^1.1.5",
     "@apiratorjs/locking": "^4.0.1"
   }
 }
