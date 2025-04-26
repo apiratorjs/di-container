@@ -3,7 +3,6 @@
     "target": "ES2021",
     "module": "CommonJS",
     "declaration": true,
-    "declarationDir": "./dist/types",
     "declarationMap": true,
     "emitDeclarationOnly": false,
     "outDir": "./dist",
