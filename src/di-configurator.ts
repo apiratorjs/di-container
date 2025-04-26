@@ -3,7 +3,7 @@ import { DiContainer } from "./di-container";
 import { IDiConfigurator, IDiModule, IOnConstruct, IOnDispose, ServiceToken } from "./types";
 import { tokenToString } from "./utils";
 import { Mutex } from "@apiratorjs/locking";
-import { CircularDependencyError } from "./errors";
+import { CircularDependencyError, RequestScopeResolutionError, UnregisteredDependencyError } from "./errors";
 
 const DI_CONTAINER_REQUEST_SCOPE_NAMESPACE = "APIRATORJS_DI_CONTAINER_REQUEST_SCOPE_NAMESPACE";
 
@@ -81,9 +81,7 @@ export class DiConfigurator implements IDiConfigurator {
           (await this.tryGetScoped<T>(token)) ??
           (await this.tryGetTransient<T>(token)) ??
           (function (): never {
-            throw new Error(
-              `Service for token ${tokenToString(token)} is not registered`
-            );
+            throw new UnregisteredDependencyError(token);
           })()
         );
       } finally {
@@ -160,11 +158,7 @@ export class DiConfigurator implements IDiConfigurator {
 
     const store = this.getRequestScopeContext();
     if (!store) {
-      throw new Error(
-        `Cannot resolve request-scoped service '${tokenToString(
-          token
-        )}' outside of a request scope. It is likely that a singleton or transient service is trying to inject a request-scoped dependency.`
-      );
+      throw new RequestScopeResolutionError(token);
     }
 
     if (store.has(token)) {

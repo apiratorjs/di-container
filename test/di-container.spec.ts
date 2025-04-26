@@ -143,7 +143,7 @@ describe("DiContainer", () => {
         (err: Error) => {
           assert.match(
             err.message,
-            /Cannot resolve request-scoped service '.*' outside of a request scope\. It is likely that a singleton or transient service is trying to inject a request-scoped dependency\./
+            /Cannot resolve request-scoped service for token '.*' outside of a request scope\. It is likely that a singleton or transient service is trying to inject a request-scoped dependency\./
           );
           return true;
         }
