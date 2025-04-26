@@ -1,6 +1,6 @@
 import { DiConfigurator } from "../src";
-import { IOnConstruct, IOnDispose } from "../src/types";
 import { AsyncContextStore } from "@apiratorjs/async-context";
+import { IOnConstruct, IOnDispose } from "../src/types";
 
 class User {
   public constructor(

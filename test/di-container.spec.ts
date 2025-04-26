@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { AsyncContextStore } from "@apiratorjs/async-context";
 import { DiConfigurator, DiContainer } from "../src";
-import { IOnConstruct, IOnDispose, ServiceToken } from "../src/types";
-import { CircularDependencyError } from "../src/errors";
+import { CircularDependencyError, IOnConstruct, IOnDispose } from "../src";
+import { ServiceToken } from "../src/types";
 
 describe("DiContainer", () => {
   const SINGLETON_TOKEN: ServiceToken = "SINGLETON_TOKEN";
