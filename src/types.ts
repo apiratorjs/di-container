@@ -34,13 +34,17 @@ export type ModuleOptions = {
     token: ServiceToken;
     useFactory: (container: DiConfigurator) => Promise<any> | any;
     lifetime: Lifetime;
+    options?: SingletonOptions;
   }>;
 }
 
 export interface IDiConfigurator {
   addSingleton<T>(
     token: ServiceToken,
-    factory: (container: DiConfigurator) => Promise<T> | T
+    factory: (container: DiConfigurator) => Promise<T> | T,
+    options?: {
+      isLazy?: boolean;
+    }
   ): this;
 
   disposeSingletons(): Promise<void>;
@@ -66,7 +70,13 @@ export interface IDiConfigurator {
 
   getRequestScopeContext(): AsyncContextStore | undefined;
 
-  build(): DiContainer;
+  build(): Promise<DiContainer>;
 
   isInRequestScopeContext(): boolean;
 }
+
+export type SingletonOptions = {
+  isLazy?: boolean;
+}
+
+export type UseFactory<T> = (diConfigurator: DiConfigurator) => Promise<T> | T;

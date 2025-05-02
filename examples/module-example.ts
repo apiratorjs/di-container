@@ -92,7 +92,7 @@ async function main() {
 
   configurator.addModule(AppModule);
 
-  const container = configurator.build();
+  const container = await configurator.build();
 
   const userService = await container.resolve<IUserService>(USER_SERVICE);
   const currentUser = userService.getCurrentUser();

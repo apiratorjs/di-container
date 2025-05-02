@@ -27,7 +27,7 @@ describe("Module", () => {
 
       configurator.addModule(testModule);
 
-      const container = configurator.build();
+      const container = await configurator.build();
       const result = await container.resolve(TEST_TOKEN);
 
       assert.equal(result, testValue);
@@ -65,7 +65,7 @@ describe("Module", () => {
       });
 
       configurator.addModule(testModule);
-      const container = configurator.build();
+      const container = await configurator.build();
 
       const singleton1 = await container.resolve(SINGLETON_TOKEN);
       const singleton2 = await container.resolve(SINGLETON_TOKEN);
@@ -122,7 +122,7 @@ describe("Module", () => {
       });
 
       configurator.addModule(testModule);
-      const container = configurator.build();
+      const container = await configurator.build();
 
       const result = await container.resolve(TEST_TOKEN);
 
@@ -169,7 +169,7 @@ describe("Module", () => {
       });
 
       configurator.addModule(compositeModule);
-      const container = configurator.build();
+      const container = await configurator.build();
 
       assert.equal(await container.resolve(TOKEN_A), "A");
       assert.equal(await container.resolve(TOKEN_B), "B");
@@ -213,7 +213,7 @@ describe("Module", () => {
       };
 
       configurator.addModule(moduleA);
-      const container = configurator.build();
+      const container = await configurator.build();
 
       assert.equal(await container.resolve(TOKEN_A), "Value A");
       assert.equal(await container.resolve(TOKEN_B), "Value B");
@@ -281,7 +281,7 @@ describe("Module", () => {
       });
 
       configurator.addModule(serviceModule);
-      const container = configurator.build();
+      const container = await configurator.build();
 
       const service = await container.resolve<TestService>(SERVICE_TOKEN);
       const result = service.performOperation();
@@ -374,7 +374,7 @@ describe("Module", () => {
       });
 
       configurator.addModule(AppModule);
-      const container = configurator.build();
+      const container = await configurator.build();
 
       const userService = await container.resolve<IUserService>(USER_SERVICE);
       const currentUser = userService.getCurrentUser();

@@ -3,7 +3,7 @@
 [![NPM version](https://img.shields.io/npm/v/@apiratorjs/di-container.svg)](https://www.npmjs.com/package/@apiratorjs/di-container)
 [![License: MIT](https://img.shields.io/npm/l/@apiratorjs/di-container.svg)](https://github.com/apiratorjs/di-container/blob/main/LICENSE)
 
-A lightweight dependency injection container for JavaScript and TypeScript with powerful features: modular organization with DiModule.create, lazy initialization, automatic circular dependency detection, and multiple service lifecycles (singleton, request-scoped, transient). Includes built-in async context management, lifecycle hooks (onConstruct/onDispose), and remains completely framework-agnostic for flexible application architecture.
+A lightweight dependency injection container for JavaScript and TypeScript with powerful features: modular organization with DiModule.create, lazy initialization, automatic circular dependency detection, and multiple service lifecycles (singleton with both in-place and lazy initialization, request-scoped, transient). Includes built-in async context management, lifecycle hooks (onConstruct/onDispose), and remains completely framework-agnostic for flexible application architecture.
 
 > **Note:** Requires Node.js version **>=16.4.0**
  
@@ -12,7 +12,7 @@ A lightweight dependency injection container for JavaScript and TypeScript with 
 ## Features
 
 - **Multiple Lifecycles:**
-    - **Singleton:** One instance per application (lazily loaded).
+    - **Singleton:** One instance per application. By default created in-place during DI build step, but can also be configured for lazy initialization (created only when requested).
     - **Request-Scoped:** One instance per request scope using asynchronous context (lazily loaded).
     - **Transient:** A new instance on every resolution.
 
@@ -61,10 +61,15 @@ import { AsyncContextStore } from "@apiratorjs/async-context";
 // Create a configurator instance.
 const diConfigurator = new DiConfigurator();
 
-// Register a singleton service (lazily loaded).
+// Register a singleton service (default: in-place initialization during container build).
 diConfigurator.addSingleton("MY_SINGLETON", async () => {
   return new MySingletonService();
 });
+
+// Register a singleton service with lazy initialization (created only when requested).
+diConfigurator.addSingleton("MY_LAZY_SINGLETON", async () => {
+  return new MySingletonService();
+}, { isLazy: true });
 
 // Register a request-scoped service.
 diConfigurator.addScoped("MY_SCOPED", async () => {
@@ -326,6 +331,7 @@ import { DiModule } from "@apiratorjs/di-container";
 
 // Define service tokens
 const DATABASE_CONNECTION = Symbol("DATABASE_CONNECTION");
+const LAZY_DATABASE_CONNECTION = Symbol("LAZY_DATABASE_CONNECTION");
 const TRANSACTION_MANAGER = Symbol("TRANSACTION_MANAGER");
 const USER_REPOSITORY = Symbol("USER_REPOSITORY");
 const USER_SERVICE = Symbol("USER_SERVICE");
@@ -339,6 +345,15 @@ const DatabaseModule = DiModule.create({
         return new DatabaseConnection(/* connection params */);
       },
       lifetime: "singleton"
+      // By default, created during container build
+    },
+    {
+      token: LAZY_DATABASE_CONNECTION,
+      useFactory: async () => {
+        return new DatabaseConnection(/* connection params */);
+      },
+      lifetime: "singleton",
+      options: { isLazy: true } // Will be created only when first requested
     },
     {
       token: TRANSACTION_MANAGER,
@@ -382,6 +397,8 @@ The `DiModule.create` method accepts a `ModuleOptions` object with the following
   - `token`: The service token (string, symbol, or class)
   - `useFactory`: A factory function that creates the service
   - `lifetime`: The service lifetime ("singleton", "scoped", or "transient")
+  - `options`: Additional options specific to the lifetime:
+    - For singletons: `{ isLazy: true }` - When true, the singleton will be created only when requested, not during DI build step
 
 This declarative approach makes it easy to organize your services and their dependencies, and enables importing modules into other modules.
 

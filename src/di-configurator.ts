@@ -1,6 +1,14 @@
 import { AsyncContext, AsyncContextStore } from "@apiratorjs/async-context";
 import { DiContainer } from "./di-container";
-import { IDiConfigurator, IDiModule, IOnConstruct, IOnDispose, ServiceToken } from "./types";
+import {
+  IDiConfigurator,
+  IDiModule,
+  IOnConstruct,
+  IOnDispose,
+  ServiceToken,
+  SingletonOptions,
+  UseFactory
+} from "./types";
 import { tokenToString } from "./utils";
 import { Mutex } from "@apiratorjs/locking";
 import { CircularDependencyError, RequestScopeResolutionError, UnregisteredDependencyError } from "./errors";
@@ -9,18 +17,22 @@ const DI_CONTAINER_REQUEST_SCOPE_NAMESPACE = "APIRATORJS_DI_CONTAINER_REQUEST_SC
 
 export class DiConfigurator implements IDiConfigurator {
   private _singletonServices = new Map<ServiceToken, any>();
-  private _singletonServiceFactories = new Map<ServiceToken, (diConfigurator: DiConfigurator) => Promise<any> | any>();
-  private _requestScopeServiceFactories = new Map<ServiceToken, (diConfigurator: DiConfigurator) => Promise<any> | any>();
-  private _transientFactories = new Map<ServiceToken, (diConfigurator: DiConfigurator) => Promise<any> | any>();
+  private _singletonServiceFactories = new Map<ServiceToken, {
+    factory: UseFactory<any>,
+    options?: SingletonOptions
+  }>();
+  private _requestScopeServiceFactories = new Map<ServiceToken, { factory: UseFactory<any> }>();
+  private _transientFactories = new Map<ServiceToken, { factory: UseFactory<any> }>();
   private _serviceMutexes = new Map<ServiceToken, Mutex>();
   private _resolutionChains = new Map<AsyncContextStore | undefined, Set<ServiceToken>>();
   private _registeredModules = new Set<IDiModule>();
 
   public addSingleton<T>(
     token: ServiceToken<any>,
-    factory: (container: DiConfigurator) => Promise<T> | T
+    factory: UseFactory<T>,
+    options?: SingletonOptions
   ) {
-    this._singletonServiceFactories.set(token, factory);
+    this._singletonServiceFactories.set(token, { factory, options });
 
     return this;
   }
@@ -39,18 +51,18 @@ export class DiConfigurator implements IDiConfigurator {
 
   public addScoped<T>(
     token: ServiceToken<any>,
-    factory: (diConfigurator: DiConfigurator) => Promise<T> | T
+    factory: UseFactory<T>
   ) {
-    this._requestScopeServiceFactories.set(token, factory);
+    this._requestScopeServiceFactories.set(token, { factory });
 
     return this;
   }
 
   public addTransient<T>(
     token: ServiceToken<any>,
-    factory: (container: DiConfigurator) => Promise<T> | T
+    factory: UseFactory<T>
   ) {
-    this._transientFactories.set(token, factory);
+    this._transientFactories.set(token, { factory });
 
     return this;
   }
@@ -115,7 +127,15 @@ export class DiConfigurator implements IDiConfigurator {
     return !!this.getRequestScopeContext();
   }
 
-  public build() {
+  public async build() {
+    for (const [token, { options }] of this._singletonServiceFactories.entries()) {
+      if (options?.isLazy) {
+        continue;
+      }
+
+      await this.tryGetSingleton(token);
+    }
+
     return new DiContainer(this);
   }
 
@@ -131,7 +151,7 @@ export class DiConfigurator implements IDiConfigurator {
       return this._singletonServices.get(token);
     }
 
-    const factory = this._singletonServiceFactories.get(token);
+    const { factory } = this._singletonServiceFactories.get(token) ?? {};
     if (!factory) {
       return;
     }
@@ -170,7 +190,11 @@ export class DiConfigurator implements IDiConfigurator {
       return store.get(token);
     }
 
-    const factory = this._requestScopeServiceFactories.get(token)!;
+    const { factory } = this._requestScopeServiceFactories.get(token) ?? {};
+    if (!factory) {
+      return;
+    }
+
     const service = await factory(this);
     if ((service as IOnConstruct)?.onConstruct) {
       await (service as IOnConstruct).onConstruct();
@@ -185,7 +209,11 @@ export class DiConfigurator implements IDiConfigurator {
       return;
     }
 
-    const factory = this._transientFactories.get(token)!;
+    const { factory } = this._transientFactories.get(token) ?? {};
+    if (!factory) {
+      return;
+    }
+
     const service = await factory(this);
     if ((service as IOnConstruct)?.onConstruct) {
       await (service as IOnConstruct).onConstruct();

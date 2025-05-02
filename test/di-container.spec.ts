@@ -1,12 +1,11 @@
 import { afterEach, beforeEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { AsyncContextStore } from "@apiratorjs/async-context";
-import { DiConfigurator, DiContainer } from "../src";
-import { CircularDependencyError, IOnConstruct, IOnDispose } from "../src";
-import { ServiceToken } from "../src/types";
+import { CircularDependencyError, DiConfigurator, DiContainer, IOnConstruct, IOnDispose, ServiceToken } from "../src";
 
 describe("DiContainer", () => {
   const SINGLETON_TOKEN: ServiceToken = "SINGLETON_TOKEN";
+  const LAZY_SINGLETON_TOKEN: ServiceToken = "LAZY_SINGLETON_TOKEN";
   const SCOPED_TOKEN: ServiceToken = "SCOPED_TOKEN";
   const TRANSIENT_TOKEN: ServiceToken = "TRANSIENT_TOKEN";
   const SCOPED_WITH_HOOKS: ServiceToken = "SCOPED_WITH_HOOKS";
@@ -16,14 +15,16 @@ describe("DiContainer", () => {
   let singletonBuildCount: number;
   let scopedBuildCount: number;
   let transientBuildCount: number;
+  let lazySingletonBuildCount: number;
 
   const runScope = async (callback: () => Promise<any>) => {
     return await diConfigurator.runWithNewRequestScope(new AsyncContextStore(), callback);
   };
 
-  beforeEach(() => {
+  beforeEach(async () => {
     diConfigurator = new DiConfigurator();
     singletonBuildCount = 0;
+    lazySingletonBuildCount = 0;
     scopedBuildCount = 0;
     transientBuildCount = 0;
 
@@ -32,6 +33,11 @@ describe("DiContainer", () => {
       singletonBuildCount++;
       return { name: "singleton-service" };
     });
+
+    diConfigurator.addSingleton(LAZY_SINGLETON_TOKEN, async () => {
+      lazySingletonBuildCount++;
+      return { name: "lazy-singleton-service" };
+    }, { isLazy: true });
 
     diConfigurator.addScoped(SCOPED_TOKEN, async () => {
       scopedBuildCount++;
@@ -43,7 +49,7 @@ describe("DiContainer", () => {
       return { name: "transient-service" };
     });
 
-    diContainer = diConfigurator.build();
+    diContainer = await diConfigurator.build();
   });
 
   afterEach(async () => {
@@ -55,13 +61,13 @@ describe("DiContainer", () => {
   // ============================================================
   describe("Singleton", () => {
     it("should lazily instantiate a singleton only once", async () => {
-      assert.equal(singletonBuildCount, 0);
+      assert.equal(lazySingletonBuildCount, 0);
 
-      const instance1 = await diConfigurator.resolve(SINGLETON_TOKEN);
-      assert.equal(singletonBuildCount, 1);
+      const instance1 = await diConfigurator.resolve(LAZY_SINGLETON_TOKEN);
+      assert.equal(lazySingletonBuildCount, 1);
 
-      const instance2 = await diConfigurator.resolve(SINGLETON_TOKEN);
-      assert.equal(singletonBuildCount, 1);
+      const instance2 = await diConfigurator.resolve(LAZY_SINGLETON_TOKEN);
+      assert.equal(lazySingletonBuildCount, 1);
       assert.strictEqual(instance1, instance2);
     });
 
@@ -79,6 +85,17 @@ describe("DiContainer", () => {
 
       const resD = await diConfigurator.resolve(SINGLETON_TOKEN);
       assert.ok(resA === resD);
+    });
+
+    it("should instantiate a singleton only once when not lazy", async () => {
+      assert.equal(singletonBuildCount, 1);
+
+      const instance1 = await diConfigurator.resolve(SINGLETON_TOKEN);
+      assert.equal(singletonBuildCount, 1);
+
+      const instance2 = await diConfigurator.resolve(SINGLETON_TOKEN);
+      assert.equal(singletonBuildCount, 1);
+      assert.strictEqual(instance1, instance2);
     });
   });
 
@@ -361,47 +378,68 @@ describe("DiContainer", () => {
       assert.equal(counter, 1, "Service factory should be called only once");
     });
   });
+});
 
-  describe("Service Override", () => {
-    it("should use only the last registered implementation for singleton services", async () => {
-      diConfigurator.addSingleton(SINGLETON_TOKEN, async () => {
-        return { name: "first-singleton-service" };
-      });
+describe("DIContainer | Service Override", () => {
+  const SINGLETON_TOKEN: ServiceToken = "SINGLETON_TOKEN";
+  const SCOPED_TOKEN: ServiceToken = "SCOPED_TOKEN";
+  const TRANSIENT_TOKEN: ServiceToken = "TRANSIENT_TOKEN";
 
-      diConfigurator.addSingleton(SINGLETON_TOKEN, async () => {
-        return { name: "overridden-singleton-service" };
-      });
+  let diConfigurator: DiConfigurator;
+  let diContainer: DiContainer;
 
-      const instance = await diConfigurator.resolve(SINGLETON_TOKEN);
-      assert.deepEqual(instance, { name: "overridden-singleton-service" });
+  const runScope = async (callback: () => Promise<any>) => {
+    return await diConfigurator.runWithNewRequestScope(new AsyncContextStore(), callback);
+  };
+
+  beforeEach(async () => {
+    diConfigurator = new DiConfigurator();
+
+    diContainer = await diConfigurator.build();
+  });
+
+  afterEach(async () => {
+    await diContainer.dispose();
+  });
+
+  it("should use only the last registered implementation for singleton services", async () => {
+    diConfigurator.addSingleton(SINGLETON_TOKEN, async () => {
+      return { name: "first-singleton-service" };
     });
 
-    it("should use only the last registered implementation for scoped services", async () => {
-      diConfigurator.addScoped(SCOPED_TOKEN, async () => {
-        return { name: "first-scoped-service" };
-      });
-
-      diConfigurator.addScoped(SCOPED_TOKEN, async () => {
-        return { name: "overridden-scoped-service" };
-      });
-
-      await runScope(async () => {
-        const instance = await diConfigurator.resolve(SCOPED_TOKEN);
-        assert.deepEqual(instance, { name: "overridden-scoped-service" });
-      });
+    diConfigurator.addSingleton(SINGLETON_TOKEN, async () => {
+      return { name: "overridden-singleton-service" };
     });
 
-    it("should use only the last registered implementation for transient services", async () => {
-      diConfigurator.addTransient(TRANSIENT_TOKEN, async () => {
-        return { name: "first-transient-service" };
-      });
+    const instance = await diConfigurator.resolve(SINGLETON_TOKEN);
+    assert.deepEqual(instance, { name: "overridden-singleton-service" });
+  });
 
-      diConfigurator.addTransient(TRANSIENT_TOKEN, async () => {
-        return { name: "overridden-transient-service" };
-      });
-
-      const instance = await diConfigurator.resolve(TRANSIENT_TOKEN);
-      assert.deepEqual(instance, { name: "overridden-transient-service" });
+  it("should use only the last registered implementation for scoped services", async () => {
+    diConfigurator.addScoped(SCOPED_TOKEN, async () => {
+      return { name: "first-scoped-service" };
     });
+
+    diConfigurator.addScoped(SCOPED_TOKEN, async () => {
+      return { name: "overridden-scoped-service" };
+    });
+
+    await runScope(async () => {
+      const instance = await diConfigurator.resolve(SCOPED_TOKEN);
+      assert.deepEqual(instance, { name: "overridden-scoped-service" });
+    });
+  });
+
+  it("should use only the last registered implementation for transient services", async () => {
+    diConfigurator.addTransient(TRANSIENT_TOKEN, async () => {
+      return { name: "first-transient-service" };
+    });
+
+    diConfigurator.addTransient(TRANSIENT_TOKEN, async () => {
+      return { name: "overridden-transient-service" };
+    });
+
+    const instance = await diConfigurator.resolve(TRANSIENT_TOKEN);
+    assert.deepEqual(instance, { name: "overridden-transient-service" });
   });
 });
