@@ -22,4 +22,8 @@ export class DiContainer {
   public async dispose() {
     await this._diConfigurator.disposeSingletons();
   }
+
+  public getRequestScopeContext(): AsyncContextStore | undefined {
+    return this._diConfigurator.getRequestScopeContext();
+  }
 }
