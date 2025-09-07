@@ -178,17 +178,17 @@ diConfigurator.addTransient("NOTIFICATION", async () => new SMSNotification(), "
 
 If no tag is specified during resolution, the service registered with the "default" tag (or no tag) will be returned.
 
-### Service Overrides
+### Service Registration Behavior
 
-When registering multiple services with the same token, only the last registered implementation will be used:
+When registering multiple services with the same token and tag, the **first** registration wins and subsequent registrations are ignored:
 
 ```typescript
-// This implementation will be overridden
+// This implementation will be used
 diConfigurator.addSingleton("MY_SERVICE", async () => {
   return new FirstImplementation();
 });
 
-// This implementation will be used when resolving MY_SERVICE
+// This registration will be ignored (same token, same default tag)
 diConfigurator.addSingleton("MY_SERVICE", async () => {
   return new SecondImplementation();
 });
@@ -196,7 +196,24 @@ diConfigurator.addSingleton("MY_SERVICE", async () => {
 // This works the same way for all service types (singleton, scoped, transient)
 ```
 
-This behavior can be useful for overriding services in testing scenarios or when customizing default implementations.
+To register multiple implementations of the same service, use different tags:
+
+```typescript
+// Both implementations will be registered with different tags
+diConfigurator.addSingleton("MY_SERVICE", async () => {
+  return new FirstImplementation();
+}, undefined, "first");
+
+diConfigurator.addSingleton("MY_SERVICE", async () => {
+  return new SecondImplementation();
+}, undefined, "second");
+
+// Resolve specific implementations
+const firstImpl = await diConfigurator.resolve("MY_SERVICE", "first");
+const secondImpl = await diConfigurator.resolve("MY_SERVICE", "second");
+```
+
+This behavior ensures that accidental duplicate registrations don't silently override existing services, while still allowing multiple implementations through the tagging system.
 
 ### Service Discovery
 
