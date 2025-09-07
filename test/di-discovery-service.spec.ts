@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { DiDiscoveryService } from "../src/di-discovery-service";
-import { IServiceRegistration, TServiceToken, TLifetime, IDiscoveryServiceQuery, IDiConfigurator } from "../src/types";
+import { IServiceRegistration, TLifetime, IDiConfigurator } from "../src/types";
 import { DiConfigurator } from "../src/di-configurator";
 
 describe("DiDiscoveryService", () => {
@@ -65,8 +65,7 @@ describe("DiDiscoveryService", () => {
 
   describe("getAll", () => {
     it("should return all service registrations when called with empty query", () => {
-      const query: IDiscoveryServiceQuery = {};
-      const result = discoveryService.getAll(query);
+      const result = discoveryService.getAll();
       
       assert.strictEqual(result.length, mockServiceRegistrations.length);
       assert.deepStrictEqual(result, mockServiceRegistrations);
@@ -74,12 +73,7 @@ describe("DiDiscoveryService", () => {
 
     it("should return all service registrations regardless of query parameters", () => {
       // Note: Current implementation ignores query parameters
-      const query: IDiscoveryServiceQuery = {
-        tag: "nonexistent",
-        lifetime: "singleton",
-        token: "UNKNOWN"
-      };
-      const result = discoveryService.getAll(query);
+      const result = discoveryService.getAll();
       
       assert.strictEqual(result.length, mockServiceRegistrations.length);
       assert.deepStrictEqual(result, mockServiceRegistrations);
@@ -87,7 +81,7 @@ describe("DiDiscoveryService", () => {
 
     it("should return empty array when no services are registered", () => {
       const emptyDiscoveryService = new DiDiscoveryService(() => []);
-      const result = emptyDiscoveryService.getAll({});
+      const result = emptyDiscoveryService.getAll();
       
       assert.strictEqual(result.length, 0);
       assert.deepStrictEqual(result, []);
@@ -260,7 +254,7 @@ describe("DiDiscoveryService", () => {
       const emptyGetter = () => [];
       const service = new DiDiscoveryService(emptyGetter);
       
-      const result = service.getAll({});
+      const result = service.getAll();
       assert.strictEqual(result.length, 0);
     });
 
@@ -273,7 +267,7 @@ describe("DiDiscoveryService", () => {
       
       const service = new DiDiscoveryService(trackingGetter);
       
-      service.getAll({});
+      service.getAll();
       service.getServicesByTag("database");
       service.getServicesByServiceToken("SERVICE_A");
       service.getServicesByLifetime("singleton");
@@ -317,7 +311,7 @@ describe("DiDiscoveryService", () => {
       
       // Should not throw errors
       assert.doesNotThrow(() => {
-        discoveryServiceWithNulls.getAll({});
+        discoveryServiceWithNulls.getAll();
         discoveryServiceWithNulls.getServicesByTag("database");
         discoveryServiceWithNulls.getServicesByServiceToken("SERVICE_A");
         discoveryServiceWithNulls.getServicesByLifetime("singleton");
@@ -331,7 +325,7 @@ describe("DiDiscoveryService", () => {
       
       const service = new DiDiscoveryService(throwingGetter);
       
-      assert.throws(() => service.getAll({}), /Getter error/);
+      assert.throws(() => service.getAll(), /Getter error/);
       assert.throws(() => service.getServicesByTag("test"), /Getter error/);
       assert.throws(() => service.getServicesByServiceToken("test"), /Getter error/);
       assert.throws(() => service.getServicesByLifetime("singleton"), /Getter error/);
@@ -391,7 +385,7 @@ describe("DiDiscoveryService", () => {
         );
         diConfigurator.addSingleton(LOGGER_TOKEN, () => new LoggerService(), { eager: true }, "logging");
 
-        const allServices = discoveryService.getAll({});
+        const allServices = discoveryService.getAll();
         assert.strictEqual(allServices.length, 3);
 
         // Test by token type
@@ -511,7 +505,7 @@ describe("DiDiscoveryService", () => {
         diConfigurator.addTransient(LOGGER_TOKEN, () => new LoggerService(), "utility");
         diConfigurator.addTransient(CACHE_TOKEN, () => ({ data: "cached" }), "utility");
 
-        const allServices = discoveryService.getAll({});
+        const allServices = discoveryService.getAll();
         assert.strictEqual(allServices.length, 4);
 
         // Test by lifetime
@@ -545,7 +539,7 @@ describe("DiDiscoveryService", () => {
         const container = await diConfigurator.build();
 
         // After building, eager singleton should be resolved
-        const allServices = discoveryService.getAll({});
+        const allServices = discoveryService.getAll();
         const eagerService = allServices.find(s => s.token === LOGGER_TOKEN);
         const lazyService = allServices.find(s => s.token === DATABASE_TOKEN);
 
@@ -594,7 +588,7 @@ describe("DiDiscoveryService", () => {
         diConfigurator.addSingleton(DATABASE_TOKEN, () => new DatabaseService(), undefined, "primary");
         diConfigurator.addSingleton(DATABASE_TOKEN, () => new DatabaseService(), undefined, "secondary");
 
-        const allServices = discoveryService.getAll({});
+        const allServices = discoveryService.getAll();
         const dbServices = allServices.filter(s => s.token === DATABASE_TOKEN);
         
         // Should have 2 registrations with different tags
@@ -623,7 +617,7 @@ describe("DiDiscoveryService", () => {
 
         diConfigurator.addTransient(LOGGER_TOKEN, () => new LoggerService(), "utility");
 
-        const allServices = discoveryService.getAll({});
+        const allServices = discoveryService.getAll();
         assert.strictEqual(allServices.length, 4);
 
         // Verify service categories
@@ -659,7 +653,7 @@ describe("DiDiscoveryService", () => {
         // Add module
         diConfigurator.addModule(testModule);
 
-        const allServices = discoveryService.getAll({});
+        const allServices = discoveryService.getAll();
         assert.strictEqual(allServices.length, 3);
 
         const moduleServices = discoveryService.getServicesByTag("module");

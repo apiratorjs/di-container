@@ -1,16 +1,11 @@
-import {
-  IDiscoveryServiceQuery,
-  IServiceRegistration,
-  TLifetime,
-  TServiceToken,
-} from "./types";
+import { IServiceRegistration, TLifetime, TServiceToken } from "./types";
 
 export class DiDiscoveryService {
   constructor(
     private readonly _serviceRegistrationsGetter: () => IServiceRegistration[]
   ) {}
 
-  getAll(query: IDiscoveryServiceQuery): IServiceRegistration[] {
+  getAll(): IServiceRegistration[] {
     return this._serviceRegistrationsGetter();
   }
 

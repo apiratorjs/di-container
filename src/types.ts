@@ -104,9 +104,3 @@ export interface IServiceRegistration<T = any> {
   tag: string;
   metatype?: TClassType<T>;
 }
-
-export interface IDiscoveryServiceQuery {
-  tag?: string;
-  lifetime?: TLifetime;
-  token?: TServiceToken;
-}
