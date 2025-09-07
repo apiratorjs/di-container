@@ -1,10 +1,17 @@
 import { DiConfigurator } from "./di-configurator";
-import { IDiConfigurator, IDiModule, Lifetime, ModuleOptions, ServiceToken } from "./types";
+import {
+  IDiConfigurator,
+  IDiModule,
+  TLifetime,
+  IModuleOptions,
+  TServiceToken,
+  ISingletonOptions,
+} from "./types";
 
 export class DiModule implements IDiModule {
-  constructor(private readonly options: ModuleOptions) {}
+  constructor(private readonly options: IModuleOptions) {}
 
-  static create(options: ModuleOptions): DiModule {
+  static create(options: IModuleOptions): DiModule {
     return new DiModule(options);
   }
 
@@ -24,34 +31,45 @@ export class DiModule implements IDiModule {
 
   private registerProvider(
     provider: {
-      token: ServiceToken;
+      token: TServiceToken;
       useFactory: (container: DiConfigurator) => Promise<any> | any;
-      lifetime: Lifetime;
+      lifetime: TLifetime;
+      singletonOptions?: ISingletonOptions;
+      tag?: string;
     },
     configurator: IDiConfigurator
   ): void {
-    const { token, useFactory, lifetime } = provider;
+    const { token, useFactory, lifetime, singletonOptions, tag } = provider;
 
-    this.registerByLifetime(token, useFactory, lifetime, configurator);
+    this.registerByLifetime(
+      token,
+      useFactory,
+      lifetime,
+      configurator,
+      singletonOptions,
+      tag
+    );
   }
 
   private registerByLifetime(
-    token: ServiceToken,
+    token: TServiceToken,
     factory: (container: DiConfigurator) => Promise<any> | any,
-    lifetime: Lifetime,
-    configurator: IDiConfigurator
+    lifetime: TLifetime,
+    configurator: IDiConfigurator,
+    singletonOptions?: ISingletonOptions,
+    tag?: string
   ): void {
     switch (lifetime) {
       case "singleton":
-        configurator.addSingleton(token, factory);
+        configurator.addSingleton(token, factory, singletonOptions, tag);
         break;
 
       case "scoped":
-        configurator.addScoped(token, factory);
+        configurator.addScoped(token, factory, tag);
         break;
 
       case "transient":
-        configurator.addTransient(token, factory);
+        configurator.addTransient(token, factory, tag);
         break;
 
       default:

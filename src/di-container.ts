@@ -1,10 +1,10 @@
 import { AsyncContextStore } from "@apiratorjs/async-context";
-import { IDiConfigurator, ServiceToken } from "./types";
+import { IDiConfigurator, TServiceToken } from "./types";
 
 export class DiContainer {
   public constructor(private readonly _diConfigurator: IDiConfigurator) {}
 
-  public async resolve<T>(token: ServiceToken<T>): Promise<T> {
+  public async resolve<T>(token: TServiceToken<T>): Promise<T> {
     return await this._diConfigurator.resolve<T>(token);
   }
 
@@ -12,7 +12,9 @@ export class DiContainer {
     initialStore: AsyncContextStore,
     callback: (diContainer: DiContainer) => Promise<any> | any
   ) {
-    return await this._diConfigurator.runWithNewRequestScope(initialStore, () => callback(this));
+    return await this._diConfigurator.runWithNewRequestScope(initialStore, () =>
+      callback(this)
+    );
   }
 
   public isInRequestScopeContext(): boolean {

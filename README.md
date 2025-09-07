@@ -12,11 +12,12 @@ A lightweight dependency injection container for JavaScript and TypeScript with 
 ## Features
 
 - **Multiple Lifecycles:**
-    - **Singleton:** One instance per application. By default created in-place during DI build step, but can also be configured for lazy initialization (created only when requested).
+    - **Singleton:** One instance per application. By default lazily initialized (created only when requested), but can be configured for eager initialization during DI build step.
     - **Request-Scoped:** One instance per request scope using asynchronous context (lazily loaded).
     - **Transient:** A new instance on every resolution.
 
-- **Lazy Initialization:** Services are only created when requested.
+- **Service Tags:** Support for registering multiple implementations of the same service token using tags, enabling flexible service resolution based on context.
+- **Lazy Initialization:** Services are only created when requested (default for singletons).
 - **Async Context Management:** Leverages [@apiratorjs/async-context](https://github.com/apiratorjs/async-context) to
   manage request scopes.
 - **Circular Dependency Detection:** Automatically detects and reports circular dependencies with detailed chain information through `CircularDependencyError`.
@@ -61,15 +62,15 @@ import { AsyncContextStore } from "@apiratorjs/async-context";
 // Create a configurator instance.
 const diConfigurator = new DiConfigurator();
 
-// Register a singleton service (default: in-place initialization during container build).
+// Register a singleton service (default: lazy initialization, created only when requested).
 diConfigurator.addSingleton("MY_SINGLETON", async () => {
   return new MySingletonService();
 });
 
-// Register a singleton service with lazy initialization (created only when requested).
-diConfigurator.addSingleton("MY_LAZY_SINGLETON", async () => {
+// Register a singleton service with eager initialization (created during container build).
+diConfigurator.addSingleton("MY_EAGER_SINGLETON", async () => {
   return new MySingletonService();
-}, { isLazy: true });
+}, { eager: true });
 
 // Register a request-scoped service.
 diConfigurator.addScoped("MY_SCOPED", async () => {
@@ -133,6 +134,48 @@ diConfigurator.addSingleton("HOOKED_SINGLETON", async () => {
 
 When the service is resolved for the first time, onConstruct() is called; later, when the container disposes of the
 service, onDispose() is invoked.
+
+### Service Tags
+
+Service tags allow you to register multiple implementations of the same service token, enabling flexible service resolution based on context. This is useful for scenarios like feature flags, environment-specific implementations, or multi-tenant applications.
+
+```typescript
+// Register multiple implementations of the same service with different tags
+diConfigurator.addSingleton("DATABASE_CONNECTION", async () => {
+  return new PostgreSQLConnection();
+}, undefined, "postgresql");
+
+diConfigurator.addSingleton("DATABASE_CONNECTION", async () => {
+  return new MySQLConnection();
+}, undefined, "mysql");
+
+diConfigurator.addSingleton("DATABASE_CONNECTION", async () => {
+  return new InMemoryConnection();
+}, undefined, "inmemory");
+
+// Resolve specific implementations using tags
+const postgresConnection = await diConfigurator.resolve("DATABASE_CONNECTION", "postgresql");
+const mysqlConnection = await diConfigurator.resolve("DATABASE_CONNECTION", "mysql");
+const inMemoryConnection = await diConfigurator.resolve("DATABASE_CONNECTION", "inmemory");
+```
+
+Tags work with all service lifecycles:
+
+```typescript
+// Singleton with tags
+diConfigurator.addSingleton("LOGGER", async () => new ConsoleLogger(), undefined, "console");
+diConfigurator.addSingleton("LOGGER", async () => new FileLogger(), undefined, "file");
+
+// Scoped with tags
+diConfigurator.addScoped("USER_CONTEXT", async () => new AdminContext(), "admin");
+diConfigurator.addScoped("USER_CONTEXT", async () => new GuestContext(), "guest");
+
+// Transient with tags
+diConfigurator.addTransient("NOTIFICATION", async () => new EmailNotification(), "email");
+diConfigurator.addTransient("NOTIFICATION", async () => new SMSNotification(), "sms");
+```
+
+If no tag is specified during resolution, the service registered with the "default" tag (or no tag) will be returned.
 
 ### Service Overrides
 
@@ -331,7 +374,7 @@ import { DiModule } from "@apiratorjs/di-container";
 
 // Define service tokens
 const DATABASE_CONNECTION = Symbol("DATABASE_CONNECTION");
-const LAZY_DATABASE_CONNECTION = Symbol("LAZY_DATABASE_CONNECTION");
+const EAGER_DATABASE_CONNECTION = Symbol("EAGER_DATABASE_CONNECTION");
 const TRANSACTION_MANAGER = Symbol("TRANSACTION_MANAGER");
 const USER_REPOSITORY = Symbol("USER_REPOSITORY");
 const USER_SERVICE = Symbol("USER_SERVICE");
@@ -345,15 +388,15 @@ const DatabaseModule = DiModule.create({
         return new DatabaseConnection(/* connection params */);
       },
       lifetime: "singleton"
-      // By default, created during container build
+      // By default, lazy initialization (created only when requested)
     },
     {
-      token: LAZY_DATABASE_CONNECTION,
+      token: EAGER_DATABASE_CONNECTION,
       useFactory: async () => {
         return new DatabaseConnection(/* connection params */);
       },
       lifetime: "singleton",
-      options: { isLazy: true } // Will be created only when first requested
+      singletonOptions: { eager: true } // Will be created during container build
     },
     {
       token: TRANSACTION_MANAGER,
@@ -397,8 +440,38 @@ The `DiModule.create` method accepts a `ModuleOptions` object with the following
   - `token`: The service token (string, symbol, or class)
   - `useFactory`: A factory function that creates the service
   - `lifetime`: The service lifetime ("singleton", "scoped", or "transient")
-  - `options`: Additional options specific to the lifetime:
-    - For singletons: `{ isLazy: true }` - When true, the singleton will be created only when requested, not during DI build step
+  - `singletonOptions`: Additional options for singleton services:
+    - `{ eager: true }` - When true, the singleton will be created during DI build step instead of lazy initialization
+  - `tag`: Optional tag to distinguish between multiple implementations of the same service token
+
+Here's an example showing how to use tags with DiModule.create:
+
+```typescript
+// Create a module with tagged services
+const LoggingModule = DiModule.create({
+  providers: [
+    {
+      token: "LOGGER",
+      useFactory: () => new ConsoleLogger(),
+      lifetime: "singleton",
+      tag: "console"
+    },
+    {
+      token: "LOGGER",
+      useFactory: () => new FileLogger(),
+      lifetime: "singleton",
+      tag: "file"
+    },
+    {
+      token: "LOGGER",
+      useFactory: () => new DatabaseLogger(),
+      lifetime: "singleton",
+      singletonOptions: { eager: true },
+      tag: "database"
+    }
+  ]
+});
+```
 
 This declarative approach makes it easy to organize your services and their dependencies, and enables importing modules into other modules.
 
