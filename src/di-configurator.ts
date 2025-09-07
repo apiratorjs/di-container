@@ -22,6 +22,7 @@ import {
   RequestScopeResolutionError,
   UnregisteredDependencyError,
 } from "./errors";
+import { DiDiscoveryService } from "./di-discovery-service";
 
 const DI_CONTAINER_REQUEST_SCOPE_NAMESPACE =
   "APIRATORJS_DI_CONTAINER_REQUEST_SCOPE_NAMESPACE";
@@ -45,6 +46,11 @@ export class DiConfigurator implements IDiConfigurator {
     Set<TServiceToken>
   >();
   private readonly _registeredModules = new Set<IDiModule>();
+  private readonly _discoveryService = new DiDiscoveryService(() => [
+    ...Array.from(this._singletonServiceRegistry.values()).flat(),
+    ...Array.from(this._requestScopeServiceRegistry.values()).flat(),
+    ...Array.from(this._transientServiceRegistry.values()).flat(),
+  ]);
 
   public addSingleton<T>(
     token: TServiceToken<any>,
@@ -260,6 +266,10 @@ export class DiConfigurator implements IDiConfigurator {
     }
 
     return new DiContainer(this);
+  }
+
+  public getDiscoveryService(): DiDiscoveryService {
+    return this._discoveryService;
   }
 
   // ============================

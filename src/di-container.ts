@@ -1,5 +1,6 @@
 import { AsyncContextStore } from "@apiratorjs/async-context";
 import { IDiConfigurator, TServiceToken } from "./types";
+import { DiDiscoveryService } from "./di-discovery-service";
 
 export class DiContainer {
   public constructor(private readonly _diConfigurator: IDiConfigurator) {}
@@ -27,5 +28,9 @@ export class DiContainer {
 
   public getRequestScopeContext(): AsyncContextStore | undefined {
     return this._diConfigurator.getRequestScopeContext();
+  }
+
+  public getDiscoveryService(): DiDiscoveryService {
+    return this._diConfigurator.getDiscoveryService();
   }
 }

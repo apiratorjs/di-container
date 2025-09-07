@@ -3,7 +3,7 @@
 [![NPM version](https://img.shields.io/npm/v/@apiratorjs/di-container.svg)](https://www.npmjs.com/package/@apiratorjs/di-container)
 [![License: MIT](https://img.shields.io/npm/l/@apiratorjs/di-container.svg)](https://github.com/apiratorjs/di-container/blob/main/LICENSE)
 
-A lightweight dependency injection container for JavaScript and TypeScript with powerful features: modular organization with DiModule.create, lazy initialization, automatic circular dependency detection, and multiple service lifecycles (singleton with both in-place and lazy initialization, request-scoped, transient). Includes built-in async context management, lifecycle hooks (onConstruct/onDispose), and remains completely framework-agnostic for flexible application architecture.
+A lightweight dependency injection container for JavaScript and TypeScript with powerful features: modular organization with DiModule.create, service discovery for runtime introspection, service tagging for multiple implementations, lazy initialization, automatic circular dependency detection, and multiple service lifecycles (singleton with both in-place and lazy initialization, request-scoped, transient). Includes built-in async context management, lifecycle hooks (onConstruct/onDispose), and remains completely framework-agnostic for flexible application architecture.
 
 > **Note:** Requires Node.js version **>=16.4.0**
  
@@ -26,6 +26,7 @@ A lightweight dependency injection container for JavaScript and TypeScript with 
     - **Request-Scoped:** Supports both onConstruct() and onDispose() hooks.
     - **Transient:** Supports only onConstruct() hooks.
 - **Concurrency Safety:** Designed to avoid race conditions during lazy instantiation.
+- **Service Discovery:** Built-in discovery service for introspecting registered services by token, lifetime, tag, or getting all registrations.
 - **Modular Organization:** Services can be organized into modules, allowing for better separation of concerns and reusability.
 
 ---
@@ -197,6 +198,131 @@ diConfigurator.addSingleton("MY_SERVICE", async () => {
 
 This behavior can be useful for overriding services in testing scenarios or when customizing default implementations.
 
+### Service Discovery
+
+The DI container includes a built-in discovery service that allows you to introspect and query registered services. This is particularly useful for debugging, monitoring, testing, and building dynamic service resolution logic.
+
+#### Accessing the Discovery Service
+
+You can access the discovery service through both the DiConfigurator and the built DiContainer:
+
+```typescript
+import { DiConfigurator } from "@apiratorjs/di-container";
+
+const diConfigurator = new DiConfigurator();
+
+// Register some services
+diConfigurator.addSingleton("DATABASE", () => new DatabaseService(), undefined, "infrastructure");
+diConfigurator.addScoped("USER_SERVICE", () => new UserService(), "business");
+diConfigurator.addTransient("LOGGER", () => new LoggerService(), "utility");
+
+// Access discovery service from configurator
+const discoveryService = diConfigurator.getDiscoveryService();
+
+// Or from the built container
+const container = diConfigurator.build();
+const containerDiscoveryService = container.getDiscoveryService();
+```
+
+#### Discovery Methods
+
+The discovery service provides several methods to query registered services:
+
+**Get All Services:**
+```typescript
+// Get all registered services
+const allServices = discoveryService.getAll({});
+console.log(`Total services registered: ${allServices.length}`);
+
+// Each service registration contains:
+// - token: The service token (string, symbol, or class)
+// - tokenType: "string" | "symbol" | "class"
+// - lifetime: "singleton" | "scoped" | "transient"
+// - tag: The service tag
+// - isResolved: Whether the service has been instantiated
+// - singletonOptions: Options for singleton services (e.g., eager initialization)
+```
+
+**Query by Service Token:**
+```typescript
+// Find services by their token
+const databaseServices = discoveryService.getServicesByServiceToken("DATABASE");
+const symbolServices = discoveryService.getServicesByServiceToken(MySymbolToken);
+const classServices = discoveryService.getServicesByServiceToken(MyServiceClass);
+```
+
+**Query by Lifetime:**
+```typescript
+// Find all singleton services
+const singletonServices = discoveryService.getServicesByLifetime("singleton");
+
+// Find all scoped services
+const scopedServices = discoveryService.getServicesByLifetime("scoped");
+
+// Find all transient services
+const transientServices = discoveryService.getServicesByLifetime("transient");
+```
+
+**Query by Tag:**
+```typescript
+// Find services by tag
+const infrastructureServices = discoveryService.getServicesByTag("infrastructure");
+const businessServices = discoveryService.getServicesByTag("business");
+const utilityServices = discoveryService.getServicesByTag("utility");
+```
+
+#### Practical Use Cases
+
+**Service Health Monitoring:**
+```typescript
+// Check which services are eagerly initialized
+const eagerSingletons = discoveryService
+  .getServicesByLifetime("singleton")
+  .filter(service => service.singletonOptions?.eager === true);
+
+console.log("Eager singletons:", eagerSingletons.map(s => s.token));
+```
+
+**Testing and Debugging:**
+```typescript
+// Verify all expected services are registered
+const expectedServices = ["DATABASE", "USER_SERVICE", "LOGGER"];
+const registeredTokens = discoveryService.getAll({}).map(s => s.token);
+
+expectedServices.forEach(token => {
+  if (!registeredTokens.includes(token)) {
+    console.warn(`Missing service: ${token}`);
+  }
+});
+```
+
+**Dynamic Service Resolution:**
+```typescript
+// Get all services with a specific tag for batch processing
+const infrastructureServices = discoveryService.getServicesByTag("infrastructure");
+
+for (const serviceReg of infrastructureServices) {
+  if (serviceReg.lifetime === "singleton") {
+    const instance = await container.resolve(serviceReg.token);
+    console.log(`Initialized infrastructure service: ${serviceReg.token}`);
+  }
+}
+```
+
+**Service Documentation Generation:**
+```typescript
+// Generate service inventory
+const serviceInventory = discoveryService.getAll({}).map(service => ({
+  token: service.token.toString(),
+  type: service.tokenType,
+  lifetime: service.lifetime,
+  tag: service.tag,
+  eager: service.singletonOptions?.eager || false
+}));
+
+console.table(serviceInventory);
+```
+
 ### Circular Dependency Detection
 
 The container automatically detects circular dependencies during service resolution and throws a `CircularDependencyError` with detailed information about the dependency chain:
@@ -318,6 +444,208 @@ const diContainer = diConfigurator.build();
  * DBContext constructed. Provider:  in_memory
  * DBContext disposed
  * User:  User { email: 'john@doe.com', age: 30 }
+ */
+```
+
+### Service Discovery Example
+
+Here's a comprehensive example demonstrating the discovery service capabilities:
+
+```typescript
+import { DiConfigurator } from "@apiratorjs/di-container";
+
+// Define service classes
+class DatabaseService {
+  public readonly name = "DatabaseService";
+  public connect() { return "connected"; }
+}
+
+class CacheService {
+  public readonly name = "CacheService";
+  public get(key: string) { return `cached_${key}`; }
+}
+
+class LoggerService {
+  public readonly name = "LoggerService";
+  public log(message: string) { console.log(`[LOG] ${message}`); }
+}
+
+class ApiService {
+  constructor(
+    private readonly db: DatabaseService,
+    private readonly cache: CacheService,
+    private readonly logger: LoggerService
+  ) {}
+  
+  public getData() {
+    this.logger.log("Getting data from API");
+    return "API data";
+  }
+}
+
+// Service tokens
+const DATABASE_TOKEN = Symbol("DATABASE");
+const CACHE_TOKEN = "CACHE_SERVICE";
+const LOGGER_TOKEN = LoggerService;
+const API_TOKEN = "API_SERVICE";
+
+const diConfigurator = new DiConfigurator();
+
+// Register services with different lifetimes and tags
+diConfigurator.addSingleton(DATABASE_TOKEN, () => new DatabaseService(), { eager: true }, "infrastructure");
+diConfigurator.addSingleton(CACHE_TOKEN, () => new CacheService(), undefined, "infrastructure");
+diConfigurator.addSingleton(LOGGER_TOKEN, () => new LoggerService(), undefined, "utility");
+
+diConfigurator.addScoped(API_TOKEN, async (container) => {
+  const db = await container.resolve(DATABASE_TOKEN);
+  const cache = await container.resolve(CACHE_TOKEN);
+  const logger = await container.resolve(LOGGER_TOKEN);
+  return new ApiService(db, cache, logger);
+}, "business");
+
+// Multiple implementations with tags
+diConfigurator.addTransient("NOTIFICATION", () => ({ send: (msg: string) => console.log(`Email: ${msg}`) }), "email");
+diConfigurator.addTransient("NOTIFICATION", () => ({ send: (msg: string) => console.log(`SMS: ${msg}`) }), "sms");
+
+// Get discovery service
+const discoveryService = diConfigurator.getDiscoveryService();
+
+// Discovery examples
+console.log("=== Service Discovery Examples ===\n");
+
+// 1. Get all services
+const allServices = discoveryService.getAll({});
+console.log(`Total registered services: ${allServices.length}\n`);
+
+// 2. Query by lifetime
+const singletonServices = discoveryService.getServicesByLifetime("singleton");
+console.log("Singleton services:");
+singletonServices.forEach(service => {
+  const eager = service.singletonOptions?.eager ? " (eager)" : " (lazy)";
+  console.log(`  - ${service.token.toString()}${eager} [${service.tag}]`);
+});
+
+const scopedServices = discoveryService.getServicesByLifetime("scoped");
+console.log(`\nScoped services: ${scopedServices.length}`);
+scopedServices.forEach(service => {
+  console.log(`  - ${service.token} [${service.tag}]`);
+});
+
+const transientServices = discoveryService.getServicesByLifetime("transient");
+console.log(`\nTransient services: ${transientServices.length}`);
+transientServices.forEach(service => {
+  console.log(`  - ${service.token} [${service.tag}]`);
+});
+
+// 3. Query by tag
+console.log("\n=== Services by Tag ===");
+const infrastructureServices = discoveryService.getServicesByTag("infrastructure");
+console.log(`Infrastructure services: ${infrastructureServices.length}`);
+infrastructureServices.forEach(service => {
+  console.log(`  - ${service.token.toString()} (${service.lifetime})`);
+});
+
+const businessServices = discoveryService.getServicesByTag("business");
+console.log(`\nBusiness services: ${businessServices.length}`);
+businessServices.forEach(service => {
+  console.log(`  - ${service.token} (${service.lifetime})`);
+});
+
+// 4. Query by token
+console.log("\n=== Query by Token ===");
+const databaseService = discoveryService.getServicesByServiceToken(DATABASE_TOKEN);
+console.log(`Database service registrations: ${databaseService.length}`);
+if (databaseService.length > 0) {
+  const service = databaseService[0];
+  console.log(`  Token type: ${service.tokenType}`);
+  console.log(`  Lifetime: ${service.lifetime}`);
+  console.log(`  Tag: ${service.tag}`);
+  console.log(`  Eager: ${service.singletonOptions?.eager || false}`);
+}
+
+// 5. Find services with multiple implementations
+const notificationServices = discoveryService.getServicesByServiceToken("NOTIFICATION");
+console.log(`\nNotification implementations: ${notificationServices.length}`);
+notificationServices.forEach(service => {
+  console.log(`  - Tag: ${service.tag}, Lifetime: ${service.lifetime}`);
+});
+
+// 6. Service health check
+console.log("\n=== Service Health Check ===");
+const eagerServices = discoveryService
+  .getServicesByLifetime("singleton")
+  .filter(service => service.singletonOptions?.eager === true);
+
+console.log(`Eager singletons (${eagerServices.length}):`);
+eagerServices.forEach(service => {
+  console.log(`  - ${service.token.toString()}`);
+});
+
+// 7. Generate service inventory
+console.log("\n=== Service Inventory ===");
+const inventory = discoveryService.getAll({}).map(service => ({
+  Token: service.token.toString(),
+  Type: service.tokenType,
+  Lifetime: service.lifetime,
+  Tag: service.tag,
+  Eager: service.singletonOptions?.eager || false
+}));
+
+console.table(inventory);
+
+/**
+ * Expected Output:
+ * 
+ * === Service Discovery Examples ===
+ * 
+ * Total registered services: 6
+ * 
+ * Singleton services:
+ *   - Symbol(DATABASE) (eager) [infrastructure]
+ *   - CACHE_SERVICE (lazy) [infrastructure]
+ *   - class LoggerService (lazy) [utility]
+ * 
+ * Scoped services: 1
+ *   - API_SERVICE [business]
+ * 
+ * Transient services: 2
+ *   - NOTIFICATION [email]
+ *   - NOTIFICATION [sms]
+ * 
+ * === Services by Tag ===
+ * Infrastructure services: 2
+ *   - Symbol(DATABASE) (singleton)
+ *   - CACHE_SERVICE (singleton)
+ * 
+ * Business services: 1
+ *   - API_SERVICE (scoped)
+ * 
+ * === Query by Token ===
+ * Database service registrations: 1
+ *   Token type: symbol
+ *   Lifetime: singleton
+ *   Tag: infrastructure
+ *   Eager: true
+ * 
+ * Notification implementations: 2
+ *   - Tag: email, Lifetime: transient
+ *   - Tag: sms, Lifetime: transient
+ * 
+ * === Service Health Check ===
+ * Eager singletons (1):
+ *   - Symbol(DATABASE)
+ * 
+ * === Service Inventory ===
+ * ┌─────────┬──────────────────────┬──────────┬──────────────┬──────────────────┬───────┐
+ * │ (index) │        Token         │   Type   │   Lifetime   │       Tag        │ Eager │
+ * ├─────────┼──────────────────────┼──────────┼──────────────┼──────────────────┼───────┤
+ * │    0    │   'Symbol(DATABASE)' │ 'symbol' │ 'singleton'  │ 'infrastructure' │ true  │
+ * │    1    │   'CACHE_SERVICE'    │ 'string' │ 'singleton'  │ 'infrastructure' │ false │
+ * │    2    │ 'class LoggerService'│ 'class'  │ 'singleton'  │    'utility'     │ false │
+ * │    3    │    'API_SERVICE'     │ 'string' │   'scoped'   │    'business'    │ false │
+ * │    4    │   'NOTIFICATION'     │ 'string' │ 'transient'  │     'email'      │ false │
+ * │    5    │   'NOTIFICATION'     │ 'string' │ 'transient'  │      'sms'       │ false │
+ * └─────────┴──────────────────────┴──────────┴──────────────┴──────────────────┴───────┘
  */
 ```
 

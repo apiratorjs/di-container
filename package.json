@@ -47,7 +47,8 @@
     "lifecycle",
     "dependency management",
     "inversion of control",
-    "ioc"
+    "ioc",
+    "discovery service"
   ],
   "type": "commonjs",
   "scripts": {

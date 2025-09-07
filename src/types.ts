@@ -1,6 +1,7 @@
 import { DiConfigurator } from "./di-configurator";
 import { AsyncContextStore } from "@apiratorjs/async-context";
 import { DiContainer } from "./di-container";
+import { DiDiscoveryService } from "./di-discovery-service";
 
 export type TClassType<T = any> = new (...args: any[]) => T;
 /**
@@ -48,40 +49,26 @@ export interface IDiConfigurator {
     token: TServiceToken,
     factory: (container: DiConfigurator) => Promise<T> | T,
     singletonOptions?: ISingletonOptions,
-    tag?:string
+    tag?: string
   ): this;
 
   addScoped<T>(
     token: TServiceToken,
     factory: (diConfigurator: DiConfigurator) => Promise<T> | T,
-    tag?:string
+    tag?: string
   ): this;
 
   addTransient<T>(
     token: TServiceToken,
     factory: (diConfigurator: DiConfigurator) => Promise<T> | T,
-    tag?:string
+    tag?: string
   ): this;
 
   addModule(module: IDiModule): this;
 
-  resolve<T>(token: TServiceToken<T>, tag?:string): Promise<T>;
+  resolve<T>(token: TServiceToken<T>, tag?: string): Promise<T>;
 
   disposeSingletons(): Promise<void>;
-
-  // /** Discover services by query criteria */
-  // discoverServices(query: IDiscoveryServiceQuery): IServiceRegistration[];
-
-  // /** Get all registered services */
-  // getAllServices(): IServiceRegistration[];
-
-  // /** Get services by tag */
-  // getServicesByTag(tag: string): IServiceRegistration[];
-
-  // /** Get services implementing a specific interface */
-  // getServicesByInterface(
-  //   interfaceToken: string | symbol
-  // ): IServiceRegistration[];
 
   runWithNewRequestScope(
     initialStore: AsyncContextStore,
@@ -93,6 +80,8 @@ export interface IDiConfigurator {
   build(): Promise<DiContainer>;
 
   isInRequestScopeContext(): boolean;
+
+  getDiscoveryService(): DiDiscoveryService;
 }
 
 export interface ISingletonOptions {
