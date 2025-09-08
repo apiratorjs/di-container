@@ -1,8 +1,8 @@
 import { AsyncContextStore } from "@apiratorjs/async-context";
-import { IDiConfigurator, TServiceToken } from "./types";
+import { IDiConfigurator, IDiContainer, TServiceToken } from "./types";
 import { DiDiscoveryService } from "./di-discovery-service";
 
-export class DiContainer {
+export class DiContainer implements IDiContainer {
   public constructor(private readonly _diConfigurator: IDiConfigurator) {}
 
   public async resolve<T>(token: TServiceToken<T>): Promise<T> {
@@ -11,9 +11,9 @@ export class DiContainer {
 
   public async runWithNewRequestScope(
     initialStore: AsyncContextStore,
-    callback: (diContainer: DiContainer) => Promise<any> | any
-  ) {
-    return await this._diConfigurator.runWithNewRequestScope(initialStore, () =>
+    callback: (diContainer: IDiContainer) => Promise<any> | any
+  ): Promise<void> {
+    await this._diConfigurator.runWithNewRequestScope(initialStore, () =>
       callback(this)
     );
   }
@@ -22,7 +22,7 @@ export class DiContainer {
     return this._diConfigurator.isInRequestScopeContext();
   }
 
-  public async dispose() {
+  public async dispose(): Promise<void> {
     await this._diConfigurator.disposeSingletons();
   }
 
@@ -32,5 +32,20 @@ export class DiContainer {
 
   public getDiscoveryService(): DiDiscoveryService {
     return this._diConfigurator.getDiscoveryService();
+  }
+
+  public async resolveAll<T>(
+    token: TServiceToken<T>,
+    tag?: string
+  ): Promise<T[]> {
+    return await this._diConfigurator.resolveAll<T>(token, tag);
+  }
+
+  public async resolveTagged<T>(tag: string): Promise<T> {
+    return await this._diConfigurator.resolveTagged<T>(tag);
+  }
+
+  public async resolveAllTagged<T>(tag: string): Promise<T[]> {
+    return await this._diConfigurator.resolveAllTagged<T>(tag);
   }
 }

@@ -228,6 +228,21 @@ export class DiConfigurator implements IDiConfigurator {
     });
   }
 
+  public async resolveAll<T>(
+    token: TServiceToken<T>,
+    tag?: string
+  ): Promise<T[]> {
+    throw new Error("Method not implemented.");
+  }
+
+  public async resolveTagged<T>(tag: string): Promise<T> {
+    throw new Error("Method not implemented.");
+  }
+
+  public async resolveAllTagged<T>(tag: string): Promise<T[]> {
+    throw new Error("Method not implemented.");
+  }
+
   public async runWithNewRequestScope(
     initialStore: AsyncContextStore,
     callback: () => Promise<any> | any

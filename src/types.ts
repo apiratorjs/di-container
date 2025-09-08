@@ -28,6 +28,29 @@ export interface IOnDispose {
   onDispose(): Promise<void> | void;
 }
 
+export interface IDiContainer {
+  resolve<T>(token: TServiceToken<T>): Promise<T>;
+
+  runWithNewRequestScope(
+    initialStore: AsyncContextStore,
+    callback: (diContainer: IDiContainer) => Promise<any> | any
+  ): Promise<void>;
+
+  isInRequestScopeContext(): boolean;
+
+  dispose(): Promise<void>;
+
+  getRequestScopeContext(): AsyncContextStore | undefined;
+
+  getDiscoveryService(): DiDiscoveryService;
+
+  resolveAll<T>(token: TServiceToken<T>, tag?: string): Promise<T[]>;
+
+  resolveTagged<T>(tag: string): Promise<T>;
+
+  resolveAllTagged<T>(tag: string): Promise<T[]>;
+}
+
 export interface IDiModule {
   register(configurator: IDiConfigurator): void;
 }
@@ -67,6 +90,12 @@ export interface IDiConfigurator {
   addModule(module: IDiModule): this;
 
   resolve<T>(token: TServiceToken<T>, tag?: string): Promise<T>;
+
+  resolveAll<T>(token: TServiceToken<T>, tag?: string): Promise<T[]>;
+
+  resolveTagged<T>(tag: string): Promise<T>;
+
+  resolveAllTagged<T>(tag: string): Promise<T[]>;
 
   disposeSingletons(): Promise<void>;
 
