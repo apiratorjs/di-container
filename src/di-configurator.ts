@@ -266,7 +266,20 @@ export class DiConfigurator implements IDiConfigurator {
   }
 
   public async resolveAllTagged<T>(tag: string): Promise<T[]> {
-    throw new Error("Method not implemented.");
+    const normalizedTag = normalizeTagToCompatibleFormat(tag);
+    const serviceRegistrationList = this.listServiceRegistrations().filter(
+      (serviceRegistration) => serviceRegistration.tag === normalizedTag
+    );
+
+    if (!serviceRegistrationList.length) {
+      return [];
+    }
+
+    return await Promise.all(
+      serviceRegistrationList.map((serviceRegistration) =>
+        this.resolve(serviceRegistration.token, serviceRegistration.tag)
+      )
+    );
   }
 
   public async runWithNewRequestScope(
