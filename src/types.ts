@@ -140,6 +140,4 @@ export interface IServiceRegistration<T = any> {
   tag: string;
   metatype?: TClassType<T>;
   getInstance(): T | undefined;
-  setInstance(instance: T): void;
-  clearInstance(): void;
 }
