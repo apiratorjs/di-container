@@ -29,9 +29,9 @@ export interface IOnDispose {
 }
 
 export interface IDiContainer {
-  resolve<T>(token: TServiceToken<T>): Promise<T | undefined>;
+  resolve<T>(token: TServiceToken<T>, tag?: string): Promise<T | undefined>;
 
-  resolveRequired<T>(token: TServiceToken<T>): Promise<T>;
+  resolveRequired<T>(token: TServiceToken<T>, tag?: string): Promise<T>;
 
   resolveAll<T>(token: TServiceToken<T>): Promise<T[]>;
 
@@ -95,7 +95,7 @@ export interface IDiConfigurator {
 
   resolve<T>(token: TServiceToken<T>, tag?: string): Promise<T | undefined>;
 
-  resolveRequired<T>(token: TServiceToken<T>): Promise<T>;
+  resolveRequired<T>(token: TServiceToken<T>, tag?: string): Promise<T>;
 
   resolveAll<T>(token: TServiceToken<T>): Promise<T[]>;
 

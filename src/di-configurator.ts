@@ -200,8 +200,8 @@ export class DiConfigurator implements IDiConfigurator {
     });
   }
 
-  public async resolveRequired<T>(token: TServiceToken<T>): Promise<T> {
-    const service = await this.resolve<T>(token);
+  public async resolveRequired<T>(token: TServiceToken<T>, tag?: string): Promise<T> {
+    const service = await this.resolve<T>(token, tag);
     if (!service) {
       throw new UnregisteredDependencyError(token);
     }

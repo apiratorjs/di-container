@@ -149,7 +149,7 @@ The `IDiConfigurator` is the main interface for configuring dependency injection
 | Method | Description | Returns |
 |--------|-------------|---------|
 | `resolve<T>(token, tag?)` | Resolve a service (optional) | `Promise<T \| undefined>` |
-| `resolveRequired<T>(token)` | Resolve a service (throws if not found) | `Promise<T>` |
+| `resolveRequired<T>(token, tag?)` | Resolve a service (throws if not found) | `Promise<T>` |
 | `resolveAll<T>(token)` | Resolve all implementations | `Promise<T[]>` |
 | `resolveTagged<T>(tag)` | Resolve first service with tag | `Promise<T \| undefined>` |
 | `resolveTaggedRequired<T>(tag)` | Resolve service with tag (throws if not found) | `Promise<T>` |
@@ -193,6 +193,81 @@ await container.runWithNewRequestScope(new AsyncContextStore(), async () => {
   console.log(`Processing request: ${requestId}`);
 });
 
+await container.dispose();
+```
+
+## IDiContainer Interface
+
+The `IDiContainer` is the runtime interface for resolving services after building your DI configuration. It provides a clean, read-only interface focused on service resolution and request scope management.
+
+### Service Resolution Methods
+
+| Method | Description | Returns |
+|--------|-------------|---------|
+| `resolve<T>(token, tag?)` | Resolve a service (optional) | `Promise<T \| undefined>` |
+| `resolveRequired<T>(token, tag?)` | Resolve a service (throws if not found) | `Promise<T>` |
+| `resolveAll<T>(token)` | Resolve all implementations | `Promise<T[]>` |
+| `resolveTagged<T>(tag)` | Resolve first service with tag | `Promise<T \| undefined>` |
+| `resolveTaggedRequired<T>(tag)` | Resolve service with tag (throws if not found) | `Promise<T>` |
+| `resolveAllTagged<T>(tag)` | Resolve all services with tag | `Promise<T[]>` |
+
+### Runtime Management Methods
+
+| Method | Description | Purpose |
+|--------|-------------|---------|
+| `runWithNewRequestScope(store, callback)` | Execute code in request scope | **Required** for scoped services |
+| `isInRequestScopeContext()` | Check if in request scope | Returns `boolean` |
+| `getRequestScopeContext()` | Get current scope context | Returns `AsyncContextStore \| undefined` |
+| `dispose()` | Dispose all services | Cleanup singletons and scoped services |
+| `getDiscoveryService()` | Get discovery service | For service introspection |
+
+### Key Differences from IDiConfigurator
+
+**IDiContainer is for runtime usage only:**
+- ✅ **Service Resolution**: All resolve methods available
+- ✅ **Request Scope Management**: Required for scoped services  
+- ✅ **Discovery**: Service introspection and health checks
+- ✅ **Cleanup**: Proper disposal of resources
+- ❌ **No Service Registration**: Cannot add new services
+- ❌ **No Building**: Already built and ready to use
+
+### Practical Usage Example
+
+```typescript
+const configurator = new DiConfigurator();
+configurator
+  .addSingleton("DATABASE", () => new DatabaseService(), { eager: true })
+  .addScoped("USER_CTX", () => ({ userId: "user123" }))
+  .addTransient("LOGGER", () => new ConsoleLogger());
+
+// Build creates the runtime container
+const container = await configurator.build();
+
+// ✅ Singleton services work anywhere
+const logger = await container.resolve("LOGGER");
+logger?.log("Application started");
+
+// ✅ Scoped services MUST be used within request scope
+await container.runWithNewRequestScope(new AsyncContextStore(), async () => {
+  const userCtx = await container.resolveRequired("USER_CTX"); // Works in scope
+  const database = await container.resolve("DATABASE");
+  
+  console.log(`Processing for user: ${userCtx.userId}`);
+});
+
+// ❌ This throws RequestScopeResolutionError:
+// const userCtx = await container.resolve("USER_CTX"); // Error!
+
+// Health check using discovery
+const discovery = container.getDiscoveryService();
+const eagerSingletons = discovery.getServicesByLifetime("singleton")
+  .filter(s => s.singletonOptions?.eager);
+
+console.log("Eager services initialized:", 
+  eagerSingletons.every(s => s.isResolved)
+);
+
+// Cleanup when shutting down
 await container.dispose();
 ```
 

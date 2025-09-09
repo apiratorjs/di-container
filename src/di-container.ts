@@ -5,12 +5,12 @@ import { DiDiscoveryService } from "./di-discovery-service";
 export class DiContainer implements IDiContainer {
   public constructor(private readonly _diConfigurator: IDiConfigurator) {}
 
-  public async resolve<T>(token: TServiceToken<T>): Promise<T | undefined> {
-    return await this._diConfigurator.resolve<T>(token);
+  public async resolve<T>(token: TServiceToken<T>, tag?: string): Promise<T | undefined> {
+    return await this._diConfigurator.resolve<T>(token, tag);
   }
 
-  public async resolveRequired<T>(token: TServiceToken<T>): Promise<T> {
-    return await this._diConfigurator.resolveRequired<T>(token);
+  public async resolveRequired<T>(token: TServiceToken<T>, tag?: string): Promise<T> {
+    return await this._diConfigurator.resolveRequired<T>(token, tag);
   }
 
   public async runWithNewRequestScope(
