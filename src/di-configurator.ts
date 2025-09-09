@@ -23,6 +23,10 @@ import {
   UnregisteredDependencyError,
 } from "./errors";
 import { DiDiscoveryService } from "./di-discovery-service";
+import {
+  ScopedServiceRegistration,
+  ServiceRegistration,
+} from "./service-registration";
 
 const DI_CONTAINER_REQUEST_SCOPE_NAMESPACE =
   "APIRATORJS_DI_CONTAINER_REQUEST_SCOPE_NAMESPACE";
@@ -30,15 +34,15 @@ const DI_CONTAINER_REQUEST_SCOPE_NAMESPACE =
 export class DiConfigurator implements IDiConfigurator {
   private readonly _singletonServiceRegistry = new Map<
     TServiceToken,
-    IServiceRegistration[]
+    ServiceRegistration[]
   >();
   private readonly _requestScopeServiceRegistry = new Map<
     TServiceToken,
-    IServiceRegistration[]
+    ServiceRegistration[]
   >();
   private readonly _transientServiceRegistry = new Map<
     TServiceToken,
-    IServiceRegistration[]
+    ServiceRegistration[]
   >();
   private readonly _serviceMutexes = new Map<TServiceToken, Mutex>();
   private readonly _resolutionChains = new Map<
@@ -77,40 +81,19 @@ export class DiConfigurator implements IDiConfigurator {
       return this;
     }
 
-    serviceRegistrationList.push({
+    const serviceRegistration = new ServiceRegistration({
       token,
-      tokenType,
-      lifetime: "singleton",
       factory,
-      singletonOptions,
+      lifetime: "singleton",
       tag: normalizedTag,
-      isResolved: false,
-      instance: undefined,
-      metatype: tokenType === "class" ? (token as TClassType<T>) : undefined,
+      singletonOptions,
     });
+
+    serviceRegistrationList.push(serviceRegistration);
 
     this._singletonServiceRegistry.set(token, serviceRegistrationList);
 
     return this;
-  }
-
-  public async disposeSingletons() {
-    await Promise.all(
-      Array.from(this._singletonServiceRegistry.values()).map(
-        async (serviceList) => {
-          for (const service of serviceList) {
-            if (
-              service.instance &&
-              (service.instance as IOnDispose)?.onDispose
-            ) {
-              await (service.instance as IOnDispose).onDispose();
-            }
-          }
-        }
-      )
-    );
-
-    this._singletonServiceRegistry.clear();
   }
 
   public addScoped<T>(
@@ -137,16 +120,15 @@ export class DiConfigurator implements IDiConfigurator {
       return this;
     }
 
-    serviceRegistrationList.push({
+    const serviceRegistration = new ScopedServiceRegistration({
       token,
-      tokenType,
-      lifetime: "scoped",
       factory,
+      lifetime: "scoped",
       tag: normalizedTag,
-      isResolved: false,
-      instance: undefined,
-      metatype: tokenType === "class" ? (token as TClassType<T>) : undefined,
+      requestScopeContextGetter: () => this.getRequestScopeContext(),
     });
+
+    serviceRegistrationList.push(serviceRegistration);
 
     this._requestScopeServiceRegistry.set(token, serviceRegistrationList);
 
@@ -177,16 +159,14 @@ export class DiConfigurator implements IDiConfigurator {
       return this;
     }
 
-    serviceRegistrationList.push({
+    const serviceRegistration = new ServiceRegistration({
       token,
-      tokenType,
-      lifetime: "transient",
       factory,
+      lifetime: "transient",
       tag: normalizedTag,
-      isResolved: false,
-      instance: undefined,
-      metatype: tokenType === "class" ? (token as TClassType<T>) : undefined,
     });
+
+    serviceRegistrationList.push(serviceRegistration);
 
     this._transientServiceRegistry.set(token, serviceRegistrationList);
 
@@ -268,6 +248,10 @@ export class DiConfigurator implements IDiConfigurator {
     return !!this.getRequestScopeContext();
   }
 
+  public async dispose(): Promise<void> {
+    await Promise.all([this.disposeSingletons(), this.disposeScopedServices()]);
+  }
+
   public async build() {
     for (const [
       token,
@@ -291,9 +275,6 @@ export class DiConfigurator implements IDiConfigurator {
   // Private methods
   // ============================
 
-  /**
-   * Lazy initializes and returns a singleton service.
-   */
   private async tryGetSingleton<T>(
     token: TServiceToken,
     tag?: string
@@ -303,11 +284,13 @@ export class DiConfigurator implements IDiConfigurator {
       return;
     }
 
+    const normalizedTag = normalizeTagToCompatibleFormat(tag ?? "default");
+
     const serviceRegistration = serviceRegistrationList.find(
       (serviceRegistration) => {
         return (
           normalizeTagToCompatibleFormat(serviceRegistration.tag) ===
-          normalizeTagToCompatibleFormat(tag ?? "default")
+          normalizedTag
         );
       }
     );
@@ -316,8 +299,8 @@ export class DiConfigurator implements IDiConfigurator {
       return;
     }
 
-    if (serviceRegistration.isResolved && serviceRegistration.instance) {
-      return serviceRegistration.instance;
+    if (serviceRegistration.isResolved) {
+      return serviceRegistration.getInstance();
     }
 
     if (!serviceRegistration.factory) {
@@ -329,10 +312,39 @@ export class DiConfigurator implements IDiConfigurator {
       await (serviceInstance as IOnConstruct).onConstruct();
     }
 
-    serviceRegistration.isResolved = true;
-    serviceRegistration.instance = serviceInstance;
+    serviceRegistration.setInstance(serviceInstance);
 
     return serviceInstance;
+  }
+
+  private async getSingletonAll<T>(token: TServiceToken) {
+    const serviceRegistrationList = this._singletonServiceRegistry.get(token);
+    if (!serviceRegistrationList) {
+      return [];
+    }
+
+    const services: T[] = [];
+
+    for (const serviceRegistration of serviceRegistrationList) {
+      if (serviceRegistration.isResolved) {
+        services.push(serviceRegistration.getInstance());
+      }
+
+      if (!serviceRegistration.factory) {
+        continue;
+      }
+
+      const serviceInstance = await serviceRegistration.factory(this);
+      if ((serviceInstance as IOnConstruct)?.onConstruct) {
+        await (serviceInstance as IOnConstruct).onConstruct();
+      }
+
+      serviceRegistration.setInstance(serviceInstance);
+
+      services.push(serviceInstance);
+    }
+
+    return services;
   }
 
   private async tryGetScoped<T>(
@@ -356,21 +368,17 @@ export class DiConfigurator implements IDiConfigurator {
       }
     );
 
+    if (!serviceRegistration) {
+      return;
+    }
+
     const store = this.getRequestScopeContext();
     if (!store) {
       throw new RequestScopeResolutionError(token);
     }
 
-    if (!serviceRegistration) {
-      return;
-    }
-
-    // Check if service already exists in the current scope's store
-    const storeKey = `${token.toString()}:${normalizedTag}`;
-    const existingService = store.get(storeKey);
-
-    if (existingService) {
-      return existingService;
+    if (serviceRegistration.isResolved) {
+      return serviceRegistration.getInstance();
     }
 
     if (!serviceRegistration.factory) {
@@ -382,10 +390,7 @@ export class DiConfigurator implements IDiConfigurator {
       await (serviceInstance as IOnConstruct).onConstruct();
     }
 
-    store.set(storeKey, serviceInstance);
-
-    serviceRegistration.isResolved = true;
-    serviceRegistration.instance = serviceInstance;
+    serviceRegistration.setInstance(serviceInstance);
 
     return serviceInstance;
   }
@@ -422,17 +427,73 @@ export class DiConfigurator implements IDiConfigurator {
     return serviceInstance;
   }
 
-  private async disposeScopedServices(): Promise<void> {
+  private async getTransientAll<T>(token: TServiceToken) {
+    const serviceRegistrationList = this._transientServiceRegistry.get(token);
+    if (!serviceRegistrationList) {
+      return [];
+    }
+
+    const services: T[] = [];
+
+    for (const serviceRegistration of serviceRegistrationList) {
+      const serviceInstance = await serviceRegistration.factory(this);
+      if ((serviceInstance as IOnConstruct)?.onConstruct) {
+        await (serviceInstance as IOnConstruct).onConstruct();
+      }
+
+      services.push(serviceInstance);
+    }
+
+    return services;
+  }
+
+  public async disposeSingletons() {
+    await Promise.all(
+      Array.from(this._singletonServiceRegistry.entries()).map(
+        async ([token, serviceList]) => {
+          const mutex = this.getMutexFor(token);
+
+          await mutex.runExclusive(async () => {
+            for (const serviceRegistration of serviceList) {
+              if (serviceRegistration.isResolved) {
+                const instance = serviceRegistration.getInstance();
+                if ("onDispose" in instance) {
+                  await (instance as IOnDispose).onDispose();
+                }
+                serviceRegistration.clearInstance();
+              }
+            }
+          });
+        }
+      )
+    );
+  }
+
+  public async disposeScopedServices(): Promise<void> {
     const scope = this.getRequestScopeContext();
     if (!scope) {
       return;
     }
 
-    for (const service of scope.values()) {
-      if ((service as IOnDispose)?.onDispose) {
-        await (service as IOnDispose).onDispose();
-      }
-    }
+    await Promise.all(
+      Array.from(this._requestScopeServiceRegistry.entries()).map(
+        async ([token, serviceList]) => {
+          const mutex = this.getMutexFor(token);
+
+          await mutex.runExclusive(async () => {
+            for (const serviceRegistration of serviceList) {
+              if (serviceRegistration.isResolved) {
+                const instance = serviceRegistration.getInstance();
+                if ("onDispose" in instance) {
+                  await (instance as IOnDispose).onDispose();
+                }
+                serviceRegistration.clearInstance();
+              }
+            }
+          });
+        }
+      )
+    );
   }
 
   private getMutexFor(token: TServiceToken): Mutex {
@@ -446,6 +507,7 @@ export class DiConfigurator implements IDiConfigurator {
   // ============================
   // Circular dependency detection
   // ============================
+  
   private getCurrentResolutionChain(): Set<TServiceToken> {
     const currentScope = this.getRequestScopeContext();
     if (!this._resolutionChains.has(currentScope)) {

@@ -97,7 +97,7 @@ export interface IDiConfigurator {
 
   resolveAllTagged<T>(tag: string): Promise<T[]>;
 
-  disposeSingletons(): Promise<void>;
+  dispose(): Promise<void>;
 
   runWithNewRequestScope(
     initialStore: AsyncContextStore,
@@ -129,7 +129,9 @@ export interface IServiceRegistration<T = any> {
   factory: TUseFactory<T>;
   singletonOptions?: ISingletonOptions;
   isResolved: boolean;
-  instance?: T;
   tag: string;
   metatype?: TClassType<T>;
+  getInstance(): T | undefined;
+  setInstance(instance: T): void;
+  clearInstance(): void;
 }

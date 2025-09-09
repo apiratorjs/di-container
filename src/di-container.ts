@@ -23,7 +23,7 @@ export class DiContainer implements IDiContainer {
   }
 
   public async dispose(): Promise<void> {
-    await this._diConfigurator.disposeSingletons();
+    await this._diConfigurator.dispose();
   }
 
   public getRequestScopeContext(): AsyncContextStore | undefined {

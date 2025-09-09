@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { DiDiscoveryService } from "../src/di-discovery-service";
 import { IServiceRegistration, TLifetime, IDiConfigurator } from "../src/types";
 import { DiConfigurator } from "../src/di-configurator";
+import { ServiceRegistration } from "../src/service-registration";
 
 describe("DiDiscoveryService", () => {
   let discoveryService: DiDiscoveryService;
@@ -10,54 +11,44 @@ describe("DiDiscoveryService", () => {
 
   beforeEach(() => {
     // Create mock service registrations for testing
+    const serviceDClass = class ServiceD {};
+    
     mockServiceRegistrations = [
-      {
+      new ServiceRegistration({
         token: "SERVICE_A",
-        tokenType: "string",
         lifetime: "singleton",
         factory: () => ({ name: "ServiceA" }),
-        isResolved: false,
-        tag: "database",
-        metatype: undefined
-      },
-      {
+        tag: "database"
+      }),
+      new ServiceRegistration({
         token: "SERVICE_B",
-        tokenType: "string", 
         lifetime: "scoped",
         factory: () => ({ name: "ServiceB" }),
-        isResolved: true,
-        tag: "api",
-        metatype: undefined
-      },
-      {
+        tag: "api"
+      }),
+      new ServiceRegistration({
         token: Symbol("SERVICE_C"),
-        tokenType: "symbol",
         lifetime: "transient",
         factory: () => ({ name: "ServiceC" }),
-        isResolved: false,
-        tag: "database",
-        metatype: undefined
-      },
-      {
-        token: class ServiceD {},
-        tokenType: "class",
+        tag: "database"
+      }),
+      new ServiceRegistration({
+        token: serviceDClass,
         lifetime: "singleton",
-        factory: () => new (class ServiceD {})(),
-        isResolved: false,
+        factory: () => new serviceDClass(),
         tag: "business",
-        singletonOptions: { eager: true },
-        metatype: class ServiceD {}
-      },
-      {
+        singletonOptions: { eager: true }
+      }),
+      new ServiceRegistration({
         token: "SERVICE_E",
-        tokenType: "string",
         lifetime: "scoped",
         factory: () => ({ name: "ServiceE" }),
-        isResolved: false,
-        tag: "api",
-        metatype: undefined
-      }
+        tag: "api"
+      })
     ];
+
+    // Set resolved state for SERVICE_B to match the original test expectation
+    mockServiceRegistrations[1].setInstance({ name: "ServiceB" });
 
     // Create discovery service with mock getter
     discoveryService = new DiDiscoveryService(() => mockServiceRegistrations);
@@ -180,15 +171,12 @@ describe("DiDiscoveryService", () => {
 
     it("should handle multiple services with same token if they exist", () => {
       // Add another service with same token for testing
-      const duplicateService: IServiceRegistration = {
+      const duplicateService = new ServiceRegistration({
         token: "SERVICE_A",
-        tokenType: "string",
         lifetime: "transient",
         factory: () => ({ name: "ServiceA_Duplicate" }),
-        isResolved: false,
-        tag: "duplicate",
-        metatype: undefined
-      };
+        tag: "duplicate"
+      });
       
       const servicesWithDuplicate = [...mockServiceRegistrations, duplicateService];
       const discoveryServiceWithDuplicate = new DiDiscoveryService(() => servicesWithDuplicate);
@@ -278,15 +266,12 @@ describe("DiDiscoveryService", () => {
 
   describe("edge cases and error handling", () => {
     it("should handle services with undefined tags", () => {
-      const serviceWithUndefinedTag: IServiceRegistration = {
+      const serviceWithUndefinedTag = new ServiceRegistration({
         token: "SERVICE_UNDEFINED_TAG",
-        tokenType: "string",
         lifetime: "singleton",
         factory: () => ({}),
-        isResolved: false,
-        tag: undefined as any,
-        metatype: undefined
-      };
+        tag: undefined as any
+      });
       
       const servicesWithUndefined = [...mockServiceRegistrations, serviceWithUndefinedTag];
       const discoveryServiceWithUndefined = new DiDiscoveryService(() => servicesWithUndefined);
@@ -296,14 +281,19 @@ describe("DiDiscoveryService", () => {
     });
 
     it("should handle services with null values gracefully", () => {
+      // Create a mock service registration with null properties manually
+      // since ServiceRegistration constructor validates tokens
       const serviceWithNulls: IServiceRegistration = {
         token: null as any,
         tokenType: "string",
         lifetime: null as any,
         factory: () => ({}),
-        isResolved: false,
         tag: null as any,
-        metatype: undefined
+        metatype: undefined,
+        isResolved: false,
+        getInstance: () => undefined,
+        setInstance: () => {},
+        clearInstance: () => {}
       };
       
       const servicesWithNulls = [...mockServiceRegistrations, serviceWithNulls];
@@ -372,7 +362,7 @@ describe("DiDiscoveryService", () => {
     });
 
     afterEach(async () => {
-      await diConfigurator.disposeSingletons();
+      await diConfigurator.dispose();
     });
 
     describe("Singleton Service Discovery", () => {
