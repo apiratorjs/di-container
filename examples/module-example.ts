@@ -57,7 +57,7 @@ const AuthModule = DiModule.create({
     {
       token: AUTH_SERVICE,
       useFactory: async (cfg: DiConfigurator) => {
-        const logger = await cfg.resolve<ILogger>(LOGGER);
+        const logger = await cfg.resolveRequired<ILogger>(LOGGER);
         return new AuthServiceImpl(logger);
       },
       lifetime: "singleton"
@@ -71,8 +71,8 @@ const UserModule = DiModule.create({
     {
       token: USER_SERVICE,
       useFactory: async (cfg: DiConfigurator) => {
-        const logger = await cfg.resolve<ILogger>(LOGGER);
-        const authService = await cfg.resolve<IAuthService>(AUTH_SERVICE);
+        const logger = await cfg.resolveRequired<ILogger>(LOGGER);
+        const authService = await cfg.resolveRequired<IAuthService>(AUTH_SERVICE);
         return new UserServiceImpl(logger, authService);
       },
       lifetime: "singleton"
@@ -94,7 +94,7 @@ async function main() {
 
   const container = await configurator.build();
 
-  const userService = await container.resolve<IUserService>(USER_SERVICE);
+  const userService = await container.resolveRequired<IUserService>(USER_SERVICE);
   const currentUser = userService.getCurrentUser();
   console.log(`Current user: ${currentUser}`);
 

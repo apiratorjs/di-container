@@ -272,7 +272,7 @@ describe("Module", () => {
           {
             token: SERVICE_TOKEN,
             useFactory: async (di: DiConfigurator) => {
-              const logger = await di.resolve<Logger>(LOGGER_TOKEN);
+              const logger = await di.resolveRequired<Logger>(LOGGER_TOKEN);
               return new TestService(logger);
             },
             lifetime: "singleton"
@@ -283,7 +283,7 @@ describe("Module", () => {
       configurator.addModule(serviceModule);
       const container = await configurator.build();
 
-      const service = await container.resolve<TestService>(SERVICE_TOKEN);
+      const service = await container.resolveRequired<TestService>(SERVICE_TOKEN);
       const result = service.performOperation();
 
       assert.equal(result, "TEST: Operation performed");
@@ -346,7 +346,7 @@ describe("Module", () => {
           {
             token: AUTH_SERVICE,
             useFactory: async (di: DiConfigurator) => {
-              const logger = await di.resolve<ILogger>(LOGGER);
+              const logger = await di.resolveRequired<ILogger>(LOGGER);
               return new AuthServiceImpl(logger);
             },
             lifetime: "singleton"
@@ -360,8 +360,8 @@ describe("Module", () => {
           {
             token: USER_SERVICE,
             useFactory: async (di: DiConfigurator) => {
-              const logger = await di.resolve<ILogger>(LOGGER);
-              const authService = await di.resolve<IAuthService>(AUTH_SERVICE);
+              const logger = await di.resolveRequired<ILogger>(LOGGER);
+              const authService = await di.resolveRequired<IAuthService>(AUTH_SERVICE);
               return new UserServiceImpl(logger, authService);
             },
             lifetime: "singleton"
@@ -376,7 +376,7 @@ describe("Module", () => {
       configurator.addModule(AppModule);
       const container = await configurator.build();
 
-      const userService = await container.resolve<IUserService>(USER_SERVICE);
+      const userService = await container.resolveRequired<IUserService>(USER_SERVICE);
       const currentUser = userService.getCurrentUser();
 
       assert.equal(currentUser, "John Doe");

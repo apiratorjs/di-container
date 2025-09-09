@@ -8,6 +8,7 @@ import {
   IOnConstruct,
   IOnDispose,
   TServiceToken,
+  UnregisteredDependencyError,
 } from "../src";
 
 describe("DiContainer", () => {
@@ -440,6 +441,24 @@ describe("DiContainer", () => {
       assert.strictEqual(result1, result2);
       assert.strictEqual(result2, result3);
       assert.equal(counter, 1, "Service factory should be called only once");
+    });
+  });
+
+  describe("Error Handling", () => {
+    it("should throw UnregisteredDependencyError when calling resolveRequired for non-existent service", async () => {
+      const NON_EXISTENT_TOKEN = "NON_EXISTENT_TOKEN";
+
+      await assert.rejects(
+        diConfigurator.resolveRequired(NON_EXISTENT_TOKEN),
+        (err: any) => {
+          assert.ok(err instanceof UnregisteredDependencyError);
+          assert.match(
+            err.message,
+            /Service for token NON_EXISTENT_TOKEN is not registered/
+          );
+          return true;
+        }
+      );
     });
   });
 
@@ -1631,6 +1650,353 @@ describe("DIContainer | Tag Functionality", () => {
 
       // After scope ends, dispose should be called
       assert.equal(disposeCount, 1);
+    });
+  });
+
+  describe("resolveTagged", () => {
+    it("should resolve singleton service by tag", async () => {
+      const TAGGED_SERVICE_TOKEN = "TAGGED_SERVICE_TOKEN";
+
+      diConfigurator.addSingleton(
+        TAGGED_SERVICE_TOKEN,
+        async () => ({ name: "tagged-singleton", type: "singleton" }),
+        undefined,
+        "my-tag"
+      );
+
+      const service = await diConfigurator.resolveTagged<any>("my-tag");
+
+      assert.deepEqual(service, {
+        name: "tagged-singleton",
+        type: "singleton",
+      });
+    });
+
+    it("should resolve scoped service by tag within request scope", async () => {
+      const SCOPED_SERVICE_TOKEN = "SCOPED_SERVICE_TOKEN";
+
+      diConfigurator.addScoped(
+        SCOPED_SERVICE_TOKEN,
+        async () => ({ name: "tagged-scoped", type: "scoped" }),
+        "scoped-tag"
+      );
+
+      await runScope(async () => {
+        const service = await diConfigurator.resolveTagged<any>("scoped-tag");
+        assert.deepEqual(service, { name: "tagged-scoped", type: "scoped" });
+      });
+    });
+
+    it("should resolve transient service by tag", async () => {
+      const TRANSIENT_SERVICE_TOKEN = "TRANSIENT_SERVICE_TOKEN";
+
+      diConfigurator.addTransient(
+        TRANSIENT_SERVICE_TOKEN,
+        async () => ({
+          name: "tagged-transient",
+          type: "transient",
+          id: Math.random(),
+        }),
+        "transient-tag"
+      );
+
+      const service1 = await diConfigurator.resolveTagged<any>("transient-tag");
+      const service2 = await diConfigurator.resolveTagged<any>("transient-tag");
+
+      assert.equal(service1.name, "tagged-transient");
+      assert.equal(service2.name, "tagged-transient");
+      assert.notStrictEqual(service1, service2); // Different instances for transient
+      assert.notEqual(service1.id, service2.id);
+    });
+
+    it("should return undefined when tag is not found", async () => {
+      const service = await diConfigurator.resolveTagged<any>(
+        "non-existent-tag"
+      );
+      assert.equal(service, undefined);
+    });
+
+    it("should normalize tag to case-insensitive format", async () => {
+      const SERVICE_TOKEN = "SERVICE_TOKEN";
+
+      diConfigurator.addSingleton(
+        SERVICE_TOKEN,
+        async () => ({ name: "case-insensitive-service" }),
+        undefined,
+        "MyTag"
+      );
+
+      const service1 = await diConfigurator.resolveTagged<any>("MyTag");
+      const service2 = await diConfigurator.resolveTagged<any>("mytag");
+      const service3 = await diConfigurator.resolveTagged<any>("MYTAG");
+
+      assert.deepEqual(service1, { name: "case-insensitive-service" });
+      assert.strictEqual(service1, service2);
+      assert.strictEqual(service2, service3);
+    });
+
+    it("should resolve default tag when service is registered without tag", async () => {
+      const DEFAULT_SERVICE_TOKEN = "DEFAULT_SERVICE_TOKEN";
+
+      diConfigurator.addSingleton(
+        DEFAULT_SERVICE_TOKEN,
+        async () => ({ name: "default-tagged-service" })
+        // No tag parameter - should use "default"
+      );
+
+      const service1 = await diConfigurator.resolveTagged<any>("default");
+      const service2 = await diConfigurator.resolveTagged<any>("DEFAULT");
+
+      assert.deepEqual(service1, { name: "default-tagged-service" });
+      assert.strictEqual(service1, service2);
+    });
+
+    it("should resolve the first matching service when multiple services have the same tag across different tokens", async () => {
+      const TOKEN_A = "TOKEN_A";
+      const TOKEN_B = "TOKEN_B";
+
+      diConfigurator.addSingleton(
+        TOKEN_A,
+        async () => ({ name: "service-a", token: "A" }),
+        undefined,
+        "shared-tag"
+      );
+
+      diConfigurator.addSingleton(
+        TOKEN_B,
+        async () => ({ name: "service-b", token: "B" }),
+        undefined,
+        "shared-tag"
+      );
+
+      const service = await diConfigurator.resolveTagged<any>("shared-tag");
+
+      // Should resolve the first registered service with the tag
+      assert.deepEqual(service, { name: "service-a", token: "A" });
+    });
+
+    it("should work with different service types in order of registry addition", async () => {
+      const SINGLETON_TOKEN = "SINGLETON_TOKEN";
+      const SCOPED_TOKEN = "SCOPED_TOKEN";
+      const TRANSIENT_TOKEN = "TRANSIENT_TOKEN";
+
+      // Register in specific order
+      diConfigurator.addTransient(
+        TRANSIENT_TOKEN,
+        async () => ({ name: "transient-service", type: "transient" }),
+        "mixed-tag"
+      );
+
+      diConfigurator.addSingleton(
+        SINGLETON_TOKEN,
+        async () => ({ name: "singleton-service", type: "singleton" }),
+        undefined,
+        "mixed-tag"
+      );
+
+      diConfigurator.addScoped(
+        SCOPED_TOKEN,
+        async () => ({ name: "scoped-service", type: "scoped" }),
+        "mixed-tag"
+      );
+
+      await runScope(async () => {
+        const service = await diConfigurator.resolveTagged<any>("mixed-tag");
+        // Should get the first registered service (transient in this case)
+        assert.deepEqual(service, {
+          name: "transient-service",
+          type: "transient",
+        });
+      });
+    });
+
+    it("should throw RequestScopeResolutionError when resolving scoped service by tag outside scope", async () => {
+      const SCOPED_TOKEN = "SCOPED_TOKEN";
+
+      diConfigurator.addScoped(
+        SCOPED_TOKEN,
+        async () => ({ name: "scoped-service" }),
+        "scope-required-tag"
+      );
+
+      await assert.rejects(
+        diConfigurator.resolveTagged<any>("scope-required-tag"),
+        /Cannot resolve request-scoped service/
+      );
+    });
+
+    it("should call lifecycle hooks for services resolved by tag", async () => {
+      let constructCount = 0;
+      let disposeCount = 0;
+      const HOOKED_TOKEN = "HOOKED_TOKEN";
+
+      diConfigurator.addSingleton(
+        HOOKED_TOKEN,
+        async () => {
+          const service: IOnConstruct & IOnDispose & { name: string } = {
+            name: "hooked-service",
+            onConstruct() {
+              constructCount++;
+            },
+            onDispose() {
+              disposeCount++;
+            },
+          };
+          return service;
+        },
+        undefined,
+        "hooked-tag"
+      );
+
+      const service = await diConfigurator.resolveTagged<any>("hooked-tag");
+      assert.equal(constructCount, 1);
+      assert.deepEqual(service, { name: "hooked-service" });
+
+      await diConfigurator.dispose();
+      assert.equal(disposeCount, 1);
+    });
+
+    it("should maintain singleton behavior when resolved by tag multiple times", async () => {
+      const SINGLETON_TOKEN = "SINGLETON_TOKEN";
+      let factoryCallCount = 0;
+
+      diConfigurator.addSingleton(
+        SINGLETON_TOKEN,
+        async () => {
+          factoryCallCount++;
+          return { name: "singleton-service", callCount: factoryCallCount };
+        },
+        undefined,
+        "singleton-tag"
+      );
+
+      const service1 = await diConfigurator.resolveTagged<any>("singleton-tag");
+      const service2 = await diConfigurator.resolveTagged<any>("singleton-tag");
+      const service3 = await diConfigurator.resolveTagged<any>("singleton-tag");
+
+      assert.equal(factoryCallCount, 1);
+      assert.strictEqual(service1, service2);
+      assert.strictEqual(service2, service3);
+      assert.deepEqual(service1, { name: "singleton-service", callCount: 1 });
+    });
+
+    it("should maintain scoped behavior when resolved by tag within same scope", async () => {
+      const SCOPED_TOKEN = "SCOPED_TOKEN";
+      let factoryCallCount = 0;
+
+      diConfigurator.addScoped(
+        SCOPED_TOKEN,
+        async () => {
+          factoryCallCount++;
+          return { name: "scoped-service", callCount: factoryCallCount };
+        },
+        "scoped-instance-tag"
+      );
+
+      await runScope(async () => {
+        const service1 = await diConfigurator.resolveTagged<any>(
+          "scoped-instance-tag"
+        );
+        const service2 = await diConfigurator.resolveTagged<any>(
+          "scoped-instance-tag"
+        );
+
+        assert.equal(factoryCallCount, 1);
+        assert.strictEqual(service1, service2);
+        assert.deepEqual(service1, { name: "scoped-service", callCount: 1 });
+      });
+
+      await runScope(async () => {
+        const service3 = await diConfigurator.resolveTagged<any>(
+          "scoped-instance-tag"
+        );
+
+        assert.equal(factoryCallCount, 2);
+        assert.deepEqual(service3, { name: "scoped-service", callCount: 2 });
+      });
+    });
+
+    it("should handle concurrent resolveTagged calls for singleton services", async () => {
+      const CONCURRENT_TOKEN = "CONCURRENT_TOKEN";
+      let factoryCallCount = 0;
+
+      diConfigurator.addSingleton(
+        CONCURRENT_TOKEN,
+        async () => {
+          factoryCallCount++;
+          // Simulate async work
+          await new Promise((resolve) => setTimeout(resolve, 10));
+          return { name: "concurrent-service", callCount: factoryCallCount };
+        },
+        undefined,
+        "concurrent-tag"
+      );
+
+      const [service1, service2, service3] = await Promise.all([
+        diConfigurator.resolveTagged<any>("concurrent-tag"),
+        diConfigurator.resolveTagged<any>("concurrent-tag"),
+        diConfigurator.resolveTagged<any>("concurrent-tag"),
+      ]);
+
+      assert.equal(factoryCallCount, 1);
+      assert.strictEqual(service1, service2);
+      assert.strictEqual(service2, service3);
+      assert.deepEqual(service1, { name: "concurrent-service", callCount: 1 });
+    });
+
+    it("should resolve services with symbol tokens by tag", async () => {
+      const SYMBOL_TOKEN = Symbol("SYMBOL_SERVICE");
+
+      diConfigurator.addSingleton(
+        SYMBOL_TOKEN,
+        async () => ({ name: "symbol-service", tokenType: "symbol" }),
+        undefined,
+        "symbol-tag"
+      );
+
+      const service = await diConfigurator.resolveTagged<any>("symbol-tag");
+      assert.deepEqual(service, {
+        name: "symbol-service",
+        tokenType: "symbol",
+      });
+    });
+
+    it("should resolve services with class tokens by tag", async () => {
+      class TestService {
+        public name = "class-service";
+        public tokenType = "class";
+      }
+
+      diConfigurator.addSingleton(
+        TestService,
+        async () => new TestService(),
+        undefined,
+        "class-tag"
+      );
+
+      const service = await diConfigurator.resolveTagged<TestService>(
+        "class-tag"
+      );
+      assert.ok(service instanceof TestService);
+      assert.equal(service?.name, "class-service");
+      assert.equal(service?.tokenType, "class");
+    });
+
+    it("should work with empty string tag normalized to default", async () => {
+      const EMPTY_TAG_TOKEN = "EMPTY_TAG_TOKEN";
+
+      diConfigurator.addSingleton(
+        EMPTY_TAG_TOKEN,
+        async () => ({ name: "empty-tag-service" }),
+        undefined,
+        "" // Empty string should normalize to "default"
+      );
+
+      const service1 = await diConfigurator.resolveTagged<any>("");
+      const service2 = await diConfigurator.resolveTagged<any>("default");
+
+      assert.deepEqual(service1, { name: "empty-tag-service" });
+      assert.strictEqual(service1, service2);
     });
   });
 });

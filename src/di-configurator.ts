@@ -7,15 +7,9 @@ import {
   IOnDispose,
   TServiceToken,
   TUseFactory,
-  IServiceRegistration,
   ISingletonOptions,
-  TClassType,
 } from "./types";
-import {
-  normalizeTagToCompatibleFormat,
-  tokenToString,
-  tokenToType,
-} from "./utils";
+import { normalizeTagToCompatibleFormat, tokenToString } from "./utils";
 import { Mutex } from "@apiratorjs/locking";
 import {
   CircularDependencyError,
@@ -50,11 +44,9 @@ export class DiConfigurator implements IDiConfigurator {
     Set<TServiceToken>
   >();
   private readonly _registeredModules = new Set<IDiModule>();
-  private readonly _discoveryService = new DiDiscoveryService(() => [
-    ...Array.from(this._singletonServiceRegistry.values()).flat(),
-    ...Array.from(this._requestScopeServiceRegistry.values()).flat(),
-    ...Array.from(this._transientServiceRegistry.values()).flat(),
-  ]);
+  private readonly _discoveryService = new DiDiscoveryService(() =>
+    this.listServiceRegistrations()
+  );
 
   public addSingleton<T>(
     token: TServiceToken<any>,
@@ -62,7 +54,6 @@ export class DiConfigurator implements IDiConfigurator {
     singletonOptions?: ISingletonOptions,
     tag?: string
   ) {
-    const tokenType = tokenToType(token);
     const normalizedTag = normalizeTagToCompatibleFormat(tag ?? "default");
 
     const serviceRegistrationList =
@@ -101,7 +92,6 @@ export class DiConfigurator implements IDiConfigurator {
     factory: TUseFactory<T>,
     tag?: string
   ) {
-    const tokenType = tokenToType(token);
     const normalizedTag = normalizeTagToCompatibleFormat(tag ?? "default");
 
     const serviceRegistrationList =
@@ -140,7 +130,6 @@ export class DiConfigurator implements IDiConfigurator {
     factory: TUseFactory<T>,
     tag?: string
   ) {
-    const tokenType = tokenToType(token);
     const normalizedTag = normalizeTagToCompatibleFormat(tag ?? "default");
 
     const serviceRegistrationList =
@@ -185,7 +174,10 @@ export class DiConfigurator implements IDiConfigurator {
     return this;
   }
 
-  public async resolve<T>(token: TServiceToken<T>, tag?: string): Promise<T> {
+  public async resolve<T>(
+    token: TServiceToken<T>,
+    tag?: string
+  ): Promise<T | undefined> {
     this.checkForCircularDependency(token);
 
     const mutex = this.getMutexFor(token);
@@ -208,15 +200,61 @@ export class DiConfigurator implements IDiConfigurator {
     });
   }
 
-  public async resolveAll<T>(
-    token: TServiceToken<T>,
-    tag?: string
-  ): Promise<T[]> {
-    throw new Error("Method not implemented.");
+  public async resolveRequired<T>(token: TServiceToken<T>): Promise<T> {
+    const service = await this.resolve<T>(token);
+    if (!service) {
+      throw new UnregisteredDependencyError(token);
+    }
+
+    return service;
   }
 
-  public async resolveTagged<T>(tag: string): Promise<T> {
-    throw new Error("Method not implemented.");
+  public async resolveAll<T>(token: TServiceToken<T>): Promise<T[]> {
+    this.checkForCircularDependency(token);
+
+    const mutex = this.getMutexFor(token);
+
+    return await mutex.runExclusive(async () => {
+      try {
+        this.addToResolutionChain(token);
+
+        return (
+          (await this.getSingletonAll<T>(token)) ??
+          (await this.getScopedAll<T>(token)) ??
+          (await this.getTransientAll<T>(token)) ??
+          (function (): never {
+            throw new UnregisteredDependencyError(token);
+          })()
+        );
+      } finally {
+        this.removeFromResolutionChain(token);
+      }
+    });
+  }
+
+  public async resolveTagged<T>(tag: string): Promise<T | undefined> {
+    const normalizedTag = normalizeTagToCompatibleFormat(tag);
+    const serviceRegistration = this.listServiceRegistrations().find(
+      (serviceRegistration) => serviceRegistration.tag === normalizedTag
+    );
+
+    if (!serviceRegistration) {
+      return;
+    }
+
+    return await this.resolve(
+      serviceRegistration.token,
+      serviceRegistration.tag
+    );
+  }
+
+  public async resolveTaggedRequired<T>(tag: string): Promise<T> {
+    const service = await this.resolveTagged<T>(tag);
+    if (!service) {
+      throw new UnregisteredDependencyError(tag);
+    }
+
+    return service;
   }
 
   public async resolveAllTagged<T>(tag: string): Promise<T[]> {
@@ -275,6 +313,14 @@ export class DiConfigurator implements IDiConfigurator {
   // Private methods
   // ============================
 
+  private listServiceRegistrations(): ServiceRegistration[] {
+    return [
+      ...Array.from(this._singletonServiceRegistry.values()).flat(),
+      ...Array.from(this._requestScopeServiceRegistry.values()).flat(),
+      ...Array.from(this._transientServiceRegistry.values()).flat(),
+    ];
+  }
+
   private async tryGetSingleton<T>(
     token: TServiceToken,
     tag?: string
@@ -317,7 +363,7 @@ export class DiConfigurator implements IDiConfigurator {
     return serviceInstance;
   }
 
-  private async getSingletonAll<T>(token: TServiceToken) {
+  private async getSingletonAll<T>(token: TServiceToken): Promise<T[]> {
     const serviceRegistrationList = this._singletonServiceRegistry.get(token);
     if (!serviceRegistrationList) {
       return [];
@@ -395,6 +441,10 @@ export class DiConfigurator implements IDiConfigurator {
     return serviceInstance;
   }
 
+  private async getScopedAll<T>(token: TServiceToken): Promise<T[]> {
+    throw new Error("Method not implemented.");
+  }
+
   private async tryGetTransient<T>(
     token: TServiceToken,
     tag?: string
@@ -427,7 +477,7 @@ export class DiConfigurator implements IDiConfigurator {
     return serviceInstance;
   }
 
-  private async getTransientAll<T>(token: TServiceToken) {
+  private async getTransientAll<T>(token: TServiceToken): Promise<T[]> {
     const serviceRegistrationList = this._transientServiceRegistry.get(token);
     if (!serviceRegistrationList) {
       return [];
@@ -507,7 +557,7 @@ export class DiConfigurator implements IDiConfigurator {
   // ============================
   // Circular dependency detection
   // ============================
-  
+
   private getCurrentResolutionChain(): Set<TServiceToken> {
     const currentScope = this.getRequestScopeContext();
     if (!this._resolutionChains.has(currentScope)) {

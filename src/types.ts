@@ -29,7 +29,17 @@ export interface IOnDispose {
 }
 
 export interface IDiContainer {
-  resolve<T>(token: TServiceToken<T>): Promise<T>;
+  resolve<T>(token: TServiceToken<T>): Promise<T | undefined>;
+
+  resolveRequired<T>(token: TServiceToken<T>): Promise<T>;
+
+  resolveAll<T>(token: TServiceToken<T>): Promise<T[]>;
+
+  resolveTagged<T>(tag: string): Promise<T | undefined>;
+
+  resolveTaggedRequired<T>(tag: string): Promise<T>;
+
+  resolveAllTagged<T>(tag: string): Promise<T[]>;
 
   runWithNewRequestScope(
     initialStore: AsyncContextStore,
@@ -43,12 +53,6 @@ export interface IDiContainer {
   getRequestScopeContext(): AsyncContextStore | undefined;
 
   getDiscoveryService(): DiDiscoveryService;
-
-  resolveAll<T>(token: TServiceToken<T>, tag?: string): Promise<T[]>;
-
-  resolveTagged<T>(tag: string): Promise<T>;
-
-  resolveAllTagged<T>(tag: string): Promise<T[]>;
 }
 
 export interface IDiModule {
@@ -89,11 +93,15 @@ export interface IDiConfigurator {
 
   addModule(module: IDiModule): this;
 
-  resolve<T>(token: TServiceToken<T>, tag?: string): Promise<T>;
+  resolve<T>(token: TServiceToken<T>, tag?: string): Promise<T | undefined>;
 
-  resolveAll<T>(token: TServiceToken<T>, tag?: string): Promise<T[]>;
+  resolveRequired<T>(token: TServiceToken<T>): Promise<T>;
 
-  resolveTagged<T>(tag: string): Promise<T>;
+  resolveAll<T>(token: TServiceToken<T>): Promise<T[]>;
+
+  resolveTagged<T>(tag: string): Promise<T | undefined>;
+  
+  resolveTaggedRequired<T>(tag: string): Promise<T>;
 
   resolveAllTagged<T>(tag: string): Promise<T[]>;
 

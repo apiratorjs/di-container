@@ -53,11 +53,11 @@ import { IOnConstruct, IOnDispose } from "../src/types";
   
   diConfigurator.addSingleton(Config, () => new Config());
   diConfigurator.addScoped(DBContext, async (cfg) => {
-    const config = await cfg.resolve(Config);
+    const config = await cfg.resolveRequired(Config);
     return new DBContext(config);
   });
   diConfigurator.addScoped(UserService, async (cfg) => {
-    const dbContext = await cfg.resolve(DBContext);
+    const dbContext = await cfg.resolveRequired(DBContext);
     return new UserService(dbContext);
   });
   
@@ -65,13 +65,13 @@ import { IOnConstruct, IOnDispose } from "../src/types";
 
   // To use request-scoped services, you need to create a new scope
   await diContainer.runWithNewRequestScope(new AsyncContextStore(), async () => {
-    const userService = await diContainer.resolve(UserService);
+    const userService = await diContainer.resolveRequired(UserService);
 
     userService.addUser(new User("john@doe.com", 30));
   });
 
   const user = await diContainer.runWithNewRequestScope(new AsyncContextStore(), async () => {
-    const userService = await diContainer.resolve(UserService);
+    const userService = await diContainer.resolveRequired(UserService);
 
     return userService.getUserByEmail("john@doe.com");
   });
