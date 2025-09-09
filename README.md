@@ -78,8 +78,8 @@ const configurator = new DiConfigurator();
 configurator.addSingleton("DATABASE", () => new DatabaseService(), { eager: true });
 
 // Scoped service with dependency injection
-configurator.addScoped("USER_SERVICE", async (cfg) => {
-  const db = await cfg.resolve("DATABASE");
+configurator.addScoped("USER_SERVICE", async (container) => {
+  const db = await container.resolve("DATABASE");
   return new UserService(db);
 });
 
@@ -90,13 +90,13 @@ configurator.addTransient("LOGGER", () => ({ log: (msg) => console.log(`[LOG] ${
 const container = await configurator.build();
 
 // Use services - scoped services REQUIRE a request scope
-await container.runWithNewRequestScope(new AsyncContextStore(), async () => {
+await container.runWithNewRequestScope(async (container) => {
   const userService = await container.resolve("USER_SERVICE"); // ✅ Works in scope
   const logger = await container.resolve("LOGGER");
   
   const user = await userService.getUser("123");
   logger.log(`Retrieved user: ${user}`);
-});
+}, new AsyncContextStore());
 
 // ❌ This would throw RequestScopeResolutionError:
 // await container.resolve("USER_SERVICE"); // Error: scoped service outside scope
@@ -115,9 +115,9 @@ await container.dispose();
 **Important:** Scoped services cannot be resolved outside a request scope:
 ```typescript
 // ✅ Correct usage
-await container.runWithNewRequestScope(new AsyncContextStore(), async () => {
+await container.runWithNewRequestScope(async (container) => {
   const scopedService = await container.resolve("SCOPED_SERVICE"); // Works
-});
+}, new AsyncContextStore());
 
 // ❌ This throws RequestScopeResolutionError
 const scopedService = await container.resolve("SCOPED_SERVICE"); // Error!
@@ -144,27 +144,12 @@ The `IDiConfigurator` is the main interface for configuring dependency injection
 | `addTransient<T>(token, factory, tag?)` | Register a transient service | `configurator.addTransient("LOGGER", () => new Logger(), "console")` |
 | `addModule(module)` | Register a module with multiple services | `configurator.addModule(new DatabaseModule())` |
 
-### Service Resolution Methods
+### Container Management Methods
 
 | Method | Description | Returns |
 |--------|-------------|---------|
-| `resolve<T>(token, tag?)` | Resolve a service (optional) | `Promise<T \| undefined>` |
-| `resolveRequired<T>(token, tag?)` | Resolve a service (throws if not found) | `Promise<T>` |
-| `resolveAll<T>(token)` | Resolve all implementations | `Promise<T[]>` |
-| `resolveTagged<T>(tag)` | Resolve first service with tag | `Promise<T \| undefined>` |
-| `resolveTaggedRequired<T>(tag)` | Resolve service with tag (throws if not found) | `Promise<T>` |
-| `resolveAllTagged<T>(tag)` | Resolve all services with tag | `Promise<T[]>` |
-
-### Container Management Methods
-
-| Method | Description | Purpose |
-|--------|-------------|---------|
-| `build()` | Build the runtime container | Returns `DiContainer` for production use |
-| `dispose()` | Dispose all services | Cleanup singletons and scoped services |
-| `runWithNewRequestScope(store, callback)` | Execute code in request scope | Required for scoped services |
-| `getRequestScopeContext()` | Get current scope context | Returns `AsyncContextStore \| undefined` |
-| `isInRequestScopeContext()` | Check if in request scope | Returns `boolean` |
-| `getDiscoveryService()` | Get discovery service | For service introspection |
+| `build()` | Build the runtime container | `Promise<DiContainer>` |
+| `getDiscoveryService()` | Get discovery service | `DiDiscoveryService` for service introspection |
 
 ### Practical Example
 
@@ -177,21 +162,22 @@ configurator
   .addScoped("REQUEST_ID", () => Math.random().toString(36))
   .addTransient("LOGGER", () => new ConsoleLogger());
 
-// Resolution - different ways to get services
-const config = await configurator.resolveRequired("CONFIG"); // ✅ Singleton works anywhere
-const loggers = await configurator.resolveAll("LOGGER");
-
-// Container management
+// Build container for runtime usage
 const container = await configurator.build();
 
-// ❌ This would throw RequestScopeResolutionError:
-// const requestId = await container.resolve("REQUEST_ID"); // Error: scoped service outside scope
+// Service introspection during configuration
+const discovery = configurator.getDiscoveryService();
+const eagerServices = discovery.getServicesByLifetime("singleton")
+  .filter(s => s.singletonOptions?.eager);
 
-// ✅ Correct usage for scoped services:
-await container.runWithNewRequestScope(new AsyncContextStore(), async () => {
+console.log("Eager services configured:", eagerServices.length);
+
+// ✅ Use the container for service resolution:
+await container.runWithNewRequestScope(async (container) => {
   const requestId = await container.resolve("REQUEST_ID"); // Works in scope
+  const logger = await container.resolve("LOGGER");
   console.log(`Processing request: ${requestId}`);
-});
+}, new AsyncContextStore());
 
 await container.dispose();
 ```
@@ -213,13 +199,12 @@ The `IDiContainer` is the runtime interface for resolving services after buildin
 
 ### Runtime Management Methods
 
-| Method | Description | Purpose |
+| Method | Description | Returns |
 |--------|-------------|---------|
-| `runWithNewRequestScope(store, callback)` | Execute code in request scope | **Required** for scoped services |
-| `isInRequestScopeContext()` | Check if in request scope | Returns `boolean` |
-| `getRequestScopeContext()` | Get current scope context | Returns `AsyncContextStore \| undefined` |
-| `dispose()` | Dispose all services | Cleanup singletons and scoped services |
-| `getDiscoveryService()` | Get discovery service | For service introspection |
+| `runWithNewRequestScope(callback, initialStore)` | Execute code in request scope (**Required** for scoped services) | `Promise<void>` |
+| `isInRequestScopeContext()` | Check if in request scope | `boolean` |
+| `dispose()` | Dispose all services (cleanup singletons and scoped services) | `Promise<void>` |
+| `getDiscoveryService()` | Get discovery service for introspection | `DiDiscoveryService` |
 
 ### Key Differences from IDiConfigurator
 
@@ -243,17 +228,17 @@ configurator
 // Build creates the runtime container
 const container = await configurator.build();
 
-// ✅ Singleton services work anywhere
+// ✅ Singleton and transient services work anywhere
 const logger = await container.resolve("LOGGER");
 logger?.log("Application started");
 
 // ✅ Scoped services MUST be used within request scope
-await container.runWithNewRequestScope(new AsyncContextStore(), async () => {
+await container.runWithNewRequestScope(async (container) => {
   const userCtx = await container.resolveRequired("USER_CTX"); // Works in scope
   const database = await container.resolve("DATABASE");
   
   console.log(`Processing for user: ${userCtx.userId}`);
-});
+}, new AsyncContextStore());
 
 // ❌ This throws RequestScopeResolutionError:
 // const userCtx = await container.resolve("USER_CTX"); // Error!
@@ -289,7 +274,16 @@ Each service registration returned by the discovery service contains:
 | `singletonOptions` | `ISingletonOptions?` | Options for singleton services |
 | `metatype` | `TClassType?` | Class constructor if token is a class |
 
-#### Methods
+#### Discovery Service Methods
+
+| Method | Description | Returns |
+|--------|-------------|---------|
+| `getAll()` | Get all registered services | `IServiceRegistration[]` |
+| `getServicesByTag(tag)` | Get services by tag | `IServiceRegistration[]` |
+| `getServicesByServiceToken(token)` | Get services by token | `IServiceRegistration[]` |
+| `getServicesByLifetime(lifetime)` | Get services by lifetime | `IServiceRegistration[]` |
+
+#### IServiceRegistration Methods
 
 | Method | Description |
 |--------|-------------|
@@ -308,7 +302,7 @@ configurator.addTransient("LOGGER", () => new LoggerService());
 const discovery = configurator.getDiscoveryService();
 
 // Query by different criteria
-const allServices = discovery.getAll({});
+const allServices = discovery.getAll();
 const singletons = discovery.getServicesByLifetime("singleton");
 const databaseServices = discovery.getServicesByServiceToken("DATABASE");
 
@@ -326,7 +320,7 @@ const eagerServices = discovery.getServicesByLifetime("singleton")
 console.log("Eager services status:", eagerServices);
 
 // Service inventory
-console.table(discovery.getAll({}).map(s => ({
+console.table(discovery.getAll().map(s => ({
   Token: s.token.toString(),
   Type: s.tokenType,
   Lifetime: s.lifetime,
@@ -341,12 +335,12 @@ console.table(discovery.getAll({}).map(s => ({
 **Circular Dependency Detection:** Automatic detection with detailed error chains:
 ```typescript
 // This creates a circular dependency
-configurator.addSingleton("ServiceA", async (cfg) => {
-  await cfg.resolve("ServiceB"); // Will detect the cycle
+configurator.addSingleton("ServiceA", async (container) => {
+  await container.resolve("ServiceB"); // Will detect the cycle
   return new ServiceA();
 });
-configurator.addSingleton("ServiceB", async (cfg) => {
-  await cfg.resolve("ServiceA");
+configurator.addSingleton("ServiceB", async (container) => {
+  await container.resolve("ServiceA");
   return new ServiceB();
 });
 
@@ -384,23 +378,23 @@ const configurator = new DiConfigurator();
 
 configurator
   .addSingleton("CONFIG", () => new Config(), { eager: true })
-  .addSingleton("DATABASE", async (cfg) => {
-    const config = await cfg.resolve("CONFIG");
+  .addSingleton("DATABASE", async (container) => {
+    const config = await container.resolve("CONFIG");
     return new Database(config);
   })
-  .addScoped("USER_SERVICE", async (cfg) => {
-    const db = await cfg.resolve("DATABASE");
+  .addScoped("USER_SERVICE", async (container) => {
+    const db = await container.resolve("DATABASE");
     return new UserService(db);
   });
 
 // Usage - scoped services MUST be used within request scope
 const container = await configurator.build();
 
-await container.runWithNewRequestScope(new AsyncContextStore(), async () => {
+await container.runWithNewRequestScope(async (container) => {
   const userService = await container.resolve("USER_SERVICE"); // ✅ Works in scope
   const user = await userService.getUser("user@example.com");
   console.log("Found user:", user);
-});
+}, new AsyncContextStore());
 
 // ❌ This would throw RequestScopeResolutionError:
 // const userService = await container.resolve("USER_SERVICE"); // Error!
@@ -447,9 +441,9 @@ const DataModule = DiModule.create({
     },
     {
       token: "USER_REPO",
-      useFactory: async (cfg) => {
-        const db = await cfg.resolve("DATABASE");
-        const logger = await cfg.resolve("LOGGER");
+      useFactory: async (container) => {
+        const db = await container.resolve("DATABASE");
+        const logger = await container.resolve("LOGGER");
         return new UserRepository(db, logger);
       },
       lifetime: "scoped"
@@ -462,11 +456,12 @@ const AppModule = DiModule.create({
   providers: [
     {
       token: "USER_SERVICE",
-      useFactory: async (cfg) => {
-        const repo = await cfg.resolve("USER_REPO");
+      useFactory: async (container) => {
+        const repo = await container.resolve("USER_REPO");
         return new UserService(repo);
       },
-      lifetime: "scoped"
+      lifetime: "scoped",
+      tag: "primary" // Optional tag support
     }
   ]
 });
@@ -476,16 +471,19 @@ const configurator = new DiConfigurator();
 configurator.addModule(AppModule);
 const container = await configurator.build();
 
-await container.runWithNewRequestScope(new AsyncContextStore(), async () => {
+await container.runWithNewRequestScope(async (container) => {
   const userService = await container.resolve("USER_SERVICE"); // ✅ Works in scope
-});
+  // Or resolve by tag:
+  const primaryUserService = await container.resolveTagged("primary");
+}, new AsyncContextStore());
 ```
 
 **Module Features:**
 - **Imports**: Import other modules to establish dependencies
-- **Providers**: Define services with tokens, factories, lifecycles, and optional tags
+- **Providers**: Define services with tokens, factories, lifecycles, optional singleton options, and optional tags
 - **Hierarchical**: Create nested module structures
-- **Registration Order**: First registration wins for same token combinations
+- **Registration Order**: First registration wins for same token+tag combinations
+- **Tag Support**: Multiple implementations can be registered with different tags
 
 ### Contributing
 

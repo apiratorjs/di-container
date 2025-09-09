@@ -1,4 +1,3 @@
-import { DiConfigurator } from "./di-configurator";
 import { AsyncContextStore } from "@apiratorjs/async-context";
 import { DiContainer } from "./di-container";
 import { DiDiscoveryService } from "./di-discovery-service";
@@ -42,15 +41,13 @@ export interface IDiContainer {
   resolveAllTagged<T>(tag: string): Promise<T[]>;
 
   runWithNewRequestScope(
-    initialStore: AsyncContextStore,
-    callback: (diContainer: IDiContainer) => Promise<any> | any
+    callback: (diContainer: IDiContainer) => Promise<any> | any,
+    initialStore: AsyncContextStore
   ): Promise<void>;
 
   isInRequestScopeContext(): boolean;
 
   dispose(): Promise<void>;
-
-  getRequestScopeContext(): AsyncContextStore | undefined;
 
   getDiscoveryService(): DiDiscoveryService;
 }
@@ -65,7 +62,7 @@ export interface IModuleOptions {
   imports?: IDiModule[];
   providers?: Array<{
     token: TServiceToken;
-    useFactory: (container: DiConfigurator) => Promise<any> | any;
+    useFactory: (container: IDiContainer) => Promise<any> | any;
     lifetime: TLifetime;
     singletonOptions?: ISingletonOptions;
   }>;
@@ -74,49 +71,26 @@ export interface IModuleOptions {
 export interface IDiConfigurator {
   addSingleton<T>(
     token: TServiceToken,
-    factory: (container: DiConfigurator) => Promise<T> | T,
+    factory: (container: IDiContainer) => Promise<T> | T,
     singletonOptions?: ISingletonOptions,
     tag?: string
   ): this;
 
   addScoped<T>(
     token: TServiceToken,
-    factory: (diConfigurator: DiConfigurator) => Promise<T> | T,
+    factory: (diContainer: IDiContainer) => Promise<T> | T,
     tag?: string
   ): this;
 
   addTransient<T>(
     token: TServiceToken,
-    factory: (diConfigurator: DiConfigurator) => Promise<T> | T,
+    factory: (diContainer: IDiContainer) => Promise<T> | T,
     tag?: string
   ): this;
 
   addModule(module: IDiModule): this;
 
-  resolve<T>(token: TServiceToken<T>, tag?: string): Promise<T | undefined>;
-
-  resolveRequired<T>(token: TServiceToken<T>, tag?: string): Promise<T>;
-
-  resolveAll<T>(token: TServiceToken<T>): Promise<T[]>;
-
-  resolveTagged<T>(tag: string): Promise<T | undefined>;
-  
-  resolveTaggedRequired<T>(tag: string): Promise<T>;
-
-  resolveAllTagged<T>(tag: string): Promise<T[]>;
-
-  dispose(): Promise<void>;
-
-  runWithNewRequestScope(
-    initialStore: AsyncContextStore,
-    callback: () => Promise<any> | any
-  ): Promise<void>;
-
-  getRequestScopeContext(): AsyncContextStore | undefined;
-
   build(): Promise<DiContainer>;
-
-  isInRequestScopeContext(): boolean;
 
   getDiscoveryService(): DiDiscoveryService;
 }
@@ -128,7 +102,7 @@ export interface ISingletonOptions {
   eager?: boolean;
 }
 
-export type TUseFactory<T> = (diConfigurator: DiConfigurator) => Promise<T> | T;
+export type TUseFactory<T> = (diContainer: IDiContainer) => Promise<T> | T;
 
 export interface IServiceRegistration<T = any> {
   token: TServiceToken<T>;

@@ -8,7 +8,7 @@ import {
   IOnConstruct,
   IOnDispose,
   TServiceToken,
-  UnregisteredDependencyError
+  UnregisteredDependencyError,
 } from "../src";
 
 describe("DiContainer", () => {
@@ -26,9 +26,9 @@ describe("DiContainer", () => {
   let transientBuildCount: number;
 
   const runScope = async (callback: () => Promise<any>) => {
-    return await diConfigurator.runWithNewRequestScope(
-      new AsyncContextStore(),
-      callback
+    return await diContainer.runWithNewRequestScope(
+      callback,
+      new AsyncContextStore()
     );
   };
 
@@ -80,10 +80,10 @@ describe("DiContainer", () => {
         // Lazy singleton should not be built during container build
         assert.equal(lazySingletonBuildCount, 0);
 
-        const instance1 = await diConfigurator.resolve(LAZY_SINGLETON_TOKEN);
+        const instance1 = await diContainer.resolve(LAZY_SINGLETON_TOKEN);
         assert.equal(lazySingletonBuildCount, 1);
 
-        const instance2 = await diConfigurator.resolve(LAZY_SINGLETON_TOKEN);
+        const instance2 = await diContainer.resolve(LAZY_SINGLETON_TOKEN);
         assert.equal(lazySingletonBuildCount, 1);
         assert.strictEqual(instance1, instance2);
       });
@@ -91,16 +91,16 @@ describe("DiContainer", () => {
       it("should not create multiple lazy singletons in parallel (no race condition)", async () => {
         // Run resolves concurrently
         const [resA, resB, resC] = await Promise.all([
-          diConfigurator.resolve(LAZY_SINGLETON_TOKEN),
-          diConfigurator.resolve(LAZY_SINGLETON_TOKEN),
-          diConfigurator.resolve(LAZY_SINGLETON_TOKEN)
+          diContainer.resolve(LAZY_SINGLETON_TOKEN),
+          diContainer.resolve(LAZY_SINGLETON_TOKEN),
+          diContainer.resolve(LAZY_SINGLETON_TOKEN),
         ]);
 
         assert.equal(lazySingletonBuildCount, 1);
         assert.ok(resA === resB);
         assert.ok(resB === resC);
 
-        const resD = await diConfigurator.resolve(LAZY_SINGLETON_TOKEN);
+        const resD = await diContainer.resolve(LAZY_SINGLETON_TOKEN);
         assert.ok(resA === resD);
       });
     });
@@ -110,10 +110,10 @@ describe("DiContainer", () => {
         // Eager singleton should be built during container build
         assert.equal(eagerSingletonBuildCount, 1);
 
-        const instance1 = await diConfigurator.resolve(EAGER_SINGLETON_TOKEN);
+        const instance1 = await diContainer.resolve(EAGER_SINGLETON_TOKEN);
         assert.equal(eagerSingletonBuildCount, 1);
 
-        const instance2 = await diConfigurator.resolve(EAGER_SINGLETON_TOKEN);
+        const instance2 = await diContainer.resolve(EAGER_SINGLETON_TOKEN);
         assert.equal(eagerSingletonBuildCount, 1);
         assert.strictEqual(instance1, instance2);
       });
@@ -124,9 +124,9 @@ describe("DiContainer", () => {
 
         // Run resolves concurrently
         const [resA, resB, resC] = await Promise.all([
-          diConfigurator.resolve(EAGER_SINGLETON_TOKEN),
-          diConfigurator.resolve(EAGER_SINGLETON_TOKEN),
-          diConfigurator.resolve(EAGER_SINGLETON_TOKEN)
+          diContainer.resolve(EAGER_SINGLETON_TOKEN),
+          diContainer.resolve(EAGER_SINGLETON_TOKEN),
+          diContainer.resolve(EAGER_SINGLETON_TOKEN),
         ]);
 
         // Should still be only built once
@@ -134,7 +134,7 @@ describe("DiContainer", () => {
         assert.ok(resA === resB);
         assert.ok(resB === resC);
 
-        const resD = await diConfigurator.resolve(EAGER_SINGLETON_TOKEN);
+        const resD = await diContainer.resolve(EAGER_SINGLETON_TOKEN);
         assert.ok(resA === resD);
       });
     });
@@ -146,7 +146,7 @@ describe("DiContainer", () => {
   describe("Scoped", () => {
     it("should throw if resolving scoped service outside of a request scope", async () => {
       await assert.rejects(
-        diConfigurator.resolve(SCOPED_TOKEN),
+        diContainer.resolve(SCOPED_TOKEN),
         /Cannot resolve request-scoped service/
       );
       assert.equal(scopedBuildCount, 0);
@@ -155,14 +155,14 @@ describe("DiContainer", () => {
     it("should resolve a scoped service once per scope", async () => {
       let firstScopeInstance: any;
       await runScope(async () => {
-        firstScopeInstance = await diConfigurator.resolve(SCOPED_TOKEN);
+        firstScopeInstance = await diContainer.resolve(SCOPED_TOKEN);
         assert.deepEqual(firstScopeInstance, { name: "scoped-service" });
         assert.equal(scopedBuildCount, 1);
       });
 
       let secondScopeInstance: any;
       await runScope(async () => {
-        secondScopeInstance = await diConfigurator.resolve(SCOPED_TOKEN);
+        secondScopeInstance = await diContainer.resolve(SCOPED_TOKEN);
         assert.deepEqual(secondScopeInstance, { name: "scoped-service" });
       });
 
@@ -174,16 +174,16 @@ describe("DiContainer", () => {
     it("should not create multiple scoped instances in parallel within the same scope", async () => {
       await runScope(async () => {
         const [resA, resB, resC] = await Promise.all([
-          diConfigurator.resolve(SCOPED_TOKEN),
-          diConfigurator.resolve(SCOPED_TOKEN),
-          diConfigurator.resolve(SCOPED_TOKEN)
+          diContainer.resolve(SCOPED_TOKEN),
+          diContainer.resolve(SCOPED_TOKEN),
+          diContainer.resolve(SCOPED_TOKEN),
         ]);
 
         assert.equal(scopedBuildCount, 1);
         assert.ok(resA === resB);
         assert.ok(resB === resC);
 
-        const resD = await diConfigurator.resolve(SCOPED_TOKEN);
+        const resD = await diContainer.resolve(SCOPED_TOKEN);
         assert.ok(resA === resD);
       });
     });
@@ -196,16 +196,13 @@ describe("DiContainer", () => {
     });
 
     it("should throw with correct error message when resolving a scoped service outside a request scope", async () => {
-      await assert.rejects(
-        diConfigurator.resolve(SCOPED_TOKEN),
-        (err: Error) => {
-          assert.match(
-            err.message,
-            /Cannot resolve request-scoped service for token '.*' outside of a request scope\. It is likely that a singleton or transient service is trying to inject a request-scoped dependency\./
-          );
-          return true;
-        }
-      );
+      await assert.rejects(diContainer.resolve(SCOPED_TOKEN), (err: Error) => {
+        assert.match(
+          err.message,
+          /Cannot resolve request-scoped service for token '.*' outside of a request scope\. It is likely that a singleton or transient service is trying to inject a request-scoped dependency\./
+        );
+        return true;
+      });
     });
   });
 
@@ -214,8 +211,8 @@ describe("DiContainer", () => {
   // ============================================================
   describe("Transient", () => {
     it("should create a new transient instance every time", async () => {
-      const t1 = await diConfigurator.resolve(TRANSIENT_TOKEN);
-      const t2 = await diConfigurator.resolve(TRANSIENT_TOKEN);
+      const t1 = await diContainer.resolve(TRANSIENT_TOKEN);
+      const t2 = await diContainer.resolve(TRANSIENT_TOKEN);
 
       assert.notStrictEqual(t1, t2);
       assert.equal(transientBuildCount, 2);
@@ -223,8 +220,8 @@ describe("DiContainer", () => {
 
     it("should create separate transients under concurrency", async () => {
       const [r1, r2] = await Promise.all([
-        diConfigurator.resolve(TRANSIENT_TOKEN),
-        diConfigurator.resolve(TRANSIENT_TOKEN)
+        diContainer.resolve(TRANSIENT_TOKEN),
+        diContainer.resolve(TRANSIENT_TOKEN),
       ]);
 
       assert.equal(transientBuildCount, 2);
@@ -248,15 +245,15 @@ describe("DiContainer", () => {
             },
             onDispose() {
               onDisposeCount++;
-            }
+            },
           };
           return service;
         });
 
-        await diConfigurator.resolve("HOOKED_SINGLETON");
+        await diContainer.resolve("HOOKED_SINGLETON");
         assert.equal(onConstructCount, 1);
 
-        await diConfigurator.dispose();
+        await diContainer.dispose();
         assert.equal(onDisposeCount, 1);
       });
     });
@@ -273,14 +270,14 @@ describe("DiContainer", () => {
             },
             onDispose() {
               onDisposeCount++;
-            }
+            },
           };
           return service;
         });
 
         // 1st scope
         await runScope(async () => {
-          const service1 = await diConfigurator.resolve(SCOPED_WITH_HOOKS);
+          const service1 = await diContainer.resolve(SCOPED_WITH_HOOKS);
           assert.equal(
             onConstructCount,
             1,
@@ -289,8 +286,8 @@ describe("DiContainer", () => {
 
           // Multiple resolves in the same scope return the same instance.
           const [service2, service3] = await Promise.all([
-            diConfigurator.resolve(SCOPED_WITH_HOOKS),
-            diConfigurator.resolve(SCOPED_WITH_HOOKS)
+            diContainer.resolve(SCOPED_WITH_HOOKS),
+            diContainer.resolve(SCOPED_WITH_HOOKS),
           ]);
           assert.equal(
             onConstructCount,
@@ -310,14 +307,14 @@ describe("DiContainer", () => {
 
         // 2nd scope
         await runScope(async () => {
-          const service4 = await diConfigurator.resolve(SCOPED_WITH_HOOKS);
+          const service4 = await diContainer.resolve(SCOPED_WITH_HOOKS);
           assert.equal(
             onConstructCount,
             2,
             "onConstruct should be called again in 2nd scope"
           );
 
-          const service5 = await diConfigurator.resolve(SCOPED_WITH_HOOKS);
+          const service5 = await diContainer.resolve(SCOPED_WITH_HOOKS);
           assert.equal(
             onConstructCount,
             2,
@@ -352,7 +349,7 @@ describe("DiContainer", () => {
         return { name: "service-b" };
       });
 
-      await assert.rejects(diConfigurator.resolve(CIRCULAR_A), (err: any) => {
+      await assert.rejects(diContainer.resolve(CIRCULAR_A), (err: any) => {
         assert.ok(err instanceof CircularDependencyError);
         assert.ok(
           err.chain?.includes(CIRCULAR_A),
@@ -387,7 +384,7 @@ describe("DiContainer", () => {
         return { name: "service-d" };
       });
 
-      await assert.rejects(diConfigurator.resolve(CIRCULAR_B), (err: any) => {
+      await assert.rejects(diContainer.resolve(CIRCULAR_B), (err: any) => {
         assert.ok(err instanceof CircularDependencyError);
         const chain = err.chain;
         assert.ok(Array.isArray(chain), "Error chain should be an array");
@@ -415,7 +412,7 @@ describe("DiContainer", () => {
       });
 
       // This should not throw
-      const serviceA = await diConfigurator.resolve(NON_CIRCULAR_A);
+      const serviceA = await diContainer.resolve(NON_CIRCULAR_A);
       assert.deepEqual(serviceA, { name: "service-a" });
     });
 
@@ -432,9 +429,9 @@ describe("DiContainer", () => {
 
       // Request the same service in parallel
       const [result1, result2, result3] = await Promise.all([
-        diConfigurator.resolve(PARALLEL_TOKEN),
-        diConfigurator.resolve(PARALLEL_TOKEN),
-        diConfigurator.resolve(PARALLEL_TOKEN)
+        diContainer.resolve(PARALLEL_TOKEN),
+        diContainer.resolve(PARALLEL_TOKEN),
+        diContainer.resolve(PARALLEL_TOKEN),
       ]);
 
       // Should be the same instance, created only once
@@ -449,7 +446,7 @@ describe("DiContainer", () => {
       const NON_EXISTENT_TOKEN = "NON_EXISTENT_TOKEN";
 
       await assert.rejects(
-        diConfigurator.resolveRequired(NON_EXISTENT_TOKEN),
+        diContainer.resolveRequired(NON_EXISTENT_TOKEN),
         (err: any) => {
           assert.ok(err instanceof UnregisteredDependencyError);
           assert.match(
@@ -471,17 +468,17 @@ describe("DiContainer", () => {
         const service: IOnDispose = {
           onDispose() {
             onDisposeCallCount++;
-          }
+          },
         };
         return service;
       });
 
       // Resolve the service to create the instance
-      await diConfigurator.resolve(DISPOSABLE_SINGLETON);
+      await diContainer.resolve(DISPOSABLE_SINGLETON);
       assert.equal(onDisposeCallCount, 0, "onDispose should not be called yet");
 
       // Call disposeSingletons
-      await diConfigurator.disposeSingletons();
+      await diContainer.disposeSingletons();
       assert.equal(onDisposeCallCount, 1, "onDispose should be called once");
     });
 
@@ -493,20 +490,20 @@ describe("DiContainer", () => {
         const service: IOnDispose = {
           onDispose() {
             onDisposeCallCount++;
-          }
+          },
         };
         return service;
       });
 
       // Resolve the service to create the instance
-      const firstInstance = await diConfigurator.resolve(DISPOSABLE_SINGLETON);
+      const firstInstance = await diContainer.resolve(DISPOSABLE_SINGLETON);
 
       // Call disposeSingletons
-      await diConfigurator.disposeSingletons();
+      await diContainer.disposeSingletons();
       assert.equal(onDisposeCallCount, 1);
 
       // Resolve again - should create a new instance
-      const secondInstance = await diConfigurator.resolve(DISPOSABLE_SINGLETON);
+      const secondInstance = await diContainer.resolve(DISPOSABLE_SINGLETON);
       assert.notStrictEqual(
         firstInstance,
         secondInstance,
@@ -529,7 +526,7 @@ describe("DiContainer", () => {
         async () => ({
           onDispose() {
             primaryDisposeCount++;
-          }
+          },
         }),
         undefined,
         "primary"
@@ -540,18 +537,18 @@ describe("DiContainer", () => {
         async () => ({
           onDispose() {
             secondaryDisposeCount++;
-          }
+          },
         }),
         undefined,
         "secondary"
       );
 
       // Resolve both services
-      await diConfigurator.resolve(TAGGED_DISPOSABLE, "primary");
-      await diConfigurator.resolve(TAGGED_DISPOSABLE, "secondary");
+      await diContainer.resolve(TAGGED_DISPOSABLE, "primary");
+      await diContainer.resolve(TAGGED_DISPOSABLE, "secondary");
 
       // Call disposeSingletons
-      await diConfigurator.disposeSingletons();
+      await diContainer.disposeSingletons();
 
       assert.equal(
         primaryDisposeCount,
@@ -575,17 +572,15 @@ describe("DiContainer", () => {
       });
 
       // Resolve the service
-      const firstInstance = await diConfigurator.resolve(
-        NON_DISPOSABLE_SINGLETON
-      );
+      const firstInstance = await diContainer.resolve(NON_DISPOSABLE_SINGLETON);
       assert.equal(factoryCallCount, 1);
 
       // Call disposeSingletons - should not throw
-      await diConfigurator.disposeSingletons();
+      await diContainer.disposeSingletons();
 
       // All singleton services should be cleared/reset, even if they don't implement IOnDispose
       // but onDispose should not be called for services that don't implement it
-      const secondInstance = await diConfigurator.resolve(
+      const secondInstance = await diContainer.resolve(
         NON_DISPOSABLE_SINGLETON
       );
       assert.notStrictEqual(
@@ -620,7 +615,7 @@ describe("DiContainer", () => {
             },
             onDispose() {
               onDisposeCallCount++;
-            }
+            },
           };
           return service;
         },
@@ -636,7 +631,7 @@ describe("DiContainer", () => {
       );
 
       // Call disposeSingletons
-      await diConfigurator.disposeSingletons();
+      await diContainer.disposeSingletons();
       assert.equal(onDisposeCallCount, 1, "onDispose should be called");
     });
 
@@ -650,16 +645,16 @@ describe("DiContainer", () => {
             // Simulate async disposal work
             await new Promise((resolve) => setTimeout(resolve, 10));
             asyncDisposeCompleted = true;
-          }
+          },
         };
         return service;
       });
 
       // Resolve the service
-      await diConfigurator.resolve(ASYNC_DISPOSABLE);
+      await diContainer.resolve(ASYNC_DISPOSABLE);
 
       // Call disposeSingletons
-      await diConfigurator.disposeSingletons();
+      await diContainer.disposeSingletons();
 
       assert.equal(
         asyncDisposeCompleted,
@@ -677,22 +672,22 @@ describe("DiContainer", () => {
         async onDispose() {
           await new Promise((resolve) => setTimeout(resolve, 20));
           disposalOrder.push(1);
-        }
+        },
       }));
 
       diConfigurator.addSingleton(DISPOSABLE_2, async () => ({
         async onDispose() {
           await new Promise((resolve) => setTimeout(resolve, 10));
           disposalOrder.push(2);
-        }
+        },
       }));
 
       // Resolve both services
-      await diConfigurator.resolve(DISPOSABLE_1);
-      await diConfigurator.resolve(DISPOSABLE_2);
+      await diContainer.resolve(DISPOSABLE_1);
+      await diContainer.resolve(DISPOSABLE_2);
 
       const startTime = Date.now();
-      await diConfigurator.disposeSingletons();
+      await diContainer.disposeSingletons();
       const endTime = Date.now();
 
       // Should complete in roughly 20ms (concurrent), not 30ms (sequential)
@@ -712,20 +707,20 @@ describe("DiContainer", () => {
       diConfigurator.addSingleton(UNRESOLVED_SINGLETON, async () => ({
         onDispose() {
           unresolvedDisposeCount++;
-        }
+        },
       }));
 
       diConfigurator.addSingleton(RESOLVED_SINGLETON, async () => ({
         onDispose() {
           resolvedDisposeCount++;
-        }
+        },
       }));
 
       // Only resolve one service
-      await diConfigurator.resolve(RESOLVED_SINGLETON);
+      await diContainer.resolve(RESOLVED_SINGLETON);
 
       // Call disposeSingletons
-      await diConfigurator.disposeSingletons();
+      await diContainer.disposeSingletons();
 
       assert.equal(
         unresolvedDisposeCount,
@@ -742,11 +737,11 @@ describe("DiContainer", () => {
 
   describe("disposeScopedServices", () => {
     it("should return early when not in request scope context", async () => {
-      assert.equal(diConfigurator.isInRequestScopeContext(), false);
+      assert.equal(diContainer.isInRequestScopeContext(), false);
 
-      await diConfigurator.disposeScopedServices();
+      await diContainer.disposeScopedServices();
 
-      assert.equal(diConfigurator.isInRequestScopeContext(), false);
+      assert.equal(diContainer.isInRequestScopeContext(), false);
     });
 
     it("should call onDispose for scoped services that implement IOnDispose", async () => {
@@ -757,20 +752,20 @@ describe("DiContainer", () => {
         const service: IOnDispose = {
           onDispose() {
             onDisposeCallCount++;
-          }
+          },
         };
         return service;
       });
 
       await runScope(async () => {
-        await diConfigurator.resolve(DISPOSABLE_SCOPED);
+        await diContainer.resolve(DISPOSABLE_SCOPED);
         assert.equal(
           onDisposeCallCount,
           0,
           "onDispose should not be called yet"
         );
 
-        await diConfigurator.disposeScopedServices();
+        await diContainer.disposeScopedServices();
         assert.equal(onDisposeCallCount, 1, "onDispose should be called once");
       });
     });
@@ -785,13 +780,13 @@ describe("DiContainer", () => {
       });
 
       await runScope(async () => {
-        const firstInstance = await diConfigurator.resolve(CLEARABLE_SCOPED);
+        const firstInstance = await diContainer.resolve(CLEARABLE_SCOPED);
         assert.equal(factoryCallCount, 1);
         assert.deepEqual(firstInstance, { name: "clearable-service", id: 1 });
 
-        await diConfigurator.disposeScopedServices();
+        await diContainer.disposeScopedServices();
 
-        const secondInstance = await diConfigurator.resolve(CLEARABLE_SCOPED);
+        const secondInstance = await diContainer.resolve(CLEARABLE_SCOPED);
         assert.equal(factoryCallCount, 2, "Factory should be called again");
         assert.deepEqual(secondInstance, { name: "clearable-service", id: 2 });
         assert.notStrictEqual(
@@ -812,21 +807,21 @@ describe("DiContainer", () => {
         name: "service-1",
         onDispose() {
           service1DisposeCount++;
-        }
+        },
       }));
 
       diConfigurator.addScoped(SCOPED_SERVICE_2, async () => ({
         name: "service-2",
         onDispose() {
           service2DisposeCount++;
-        }
+        },
       }));
 
       await runScope(async () => {
-        await diConfigurator.resolve(SCOPED_SERVICE_1);
-        await diConfigurator.resolve(SCOPED_SERVICE_2);
+        await diContainer.resolve(SCOPED_SERVICE_1);
+        await diContainer.resolve(SCOPED_SERVICE_2);
 
-        await diConfigurator.disposeScopedServices();
+        await diContainer.disposeScopedServices();
 
         assert.equal(service1DisposeCount, 1, "Service 1 should be disposed");
         assert.equal(service2DisposeCount, 1, "Service 2 should be disposed");
@@ -844,7 +839,7 @@ describe("DiContainer", () => {
           name: "primary-service",
           onDispose() {
             primaryDisposeCount++;
-          }
+          },
         }),
         "primary"
       );
@@ -855,16 +850,16 @@ describe("DiContainer", () => {
           name: "secondary-service",
           onDispose() {
             secondaryDisposeCount++;
-          }
+          },
         }),
         "secondary"
       );
 
       await runScope(async () => {
-        await diConfigurator.resolve(TAGGED_SCOPED_DISPOSABLE, "primary");
-        await diConfigurator.resolve(TAGGED_SCOPED_DISPOSABLE, "secondary");
+        await diContainer.resolve(TAGGED_SCOPED_DISPOSABLE, "primary");
+        await diContainer.resolve(TAGGED_SCOPED_DISPOSABLE, "secondary");
 
-        await diConfigurator.disposeScopedServices();
+        await diContainer.disposeScopedServices();
 
         assert.equal(
           primaryDisposeCount,
@@ -889,16 +884,12 @@ describe("DiContainer", () => {
       });
 
       await runScope(async () => {
-        const firstInstance = await diConfigurator.resolve(
-          NON_DISPOSABLE_SCOPED
-        );
+        const firstInstance = await diContainer.resolve(NON_DISPOSABLE_SCOPED);
         assert.equal(factoryCallCount, 1);
 
-        await diConfigurator.disposeScopedServices();
+        await diContainer.disposeScopedServices();
 
-        const secondInstance = await diConfigurator.resolve(
-          NON_DISPOSABLE_SCOPED
-        );
+        const secondInstance = await diContainer.resolve(NON_DISPOSABLE_SCOPED);
         assert.equal(factoryCallCount, 2, "Factory should be called again");
         assert.notStrictEqual(
           firstInstance,
@@ -917,15 +908,15 @@ describe("DiContainer", () => {
           async onDispose() {
             await new Promise((resolve) => setTimeout(resolve, 10));
             asyncDisposeCompleted = true;
-          }
+          },
         };
         return service;
       });
 
       await runScope(async () => {
-        await diConfigurator.resolve(ASYNC_DISPOSABLE_SCOPED);
+        await diContainer.resolve(ASYNC_DISPOSABLE_SCOPED);
 
-        await diConfigurator.disposeScopedServices();
+        await diContainer.disposeScopedServices();
 
         assert.equal(
           asyncDisposeCompleted,
@@ -945,7 +936,7 @@ describe("DiContainer", () => {
         async onDispose() {
           await new Promise((resolve) => setTimeout(resolve, 20));
           disposalOrder.push(1);
-        }
+        },
       }));
 
       diConfigurator.addScoped(DISPOSABLE_SCOPED_2, async () => ({
@@ -953,15 +944,15 @@ describe("DiContainer", () => {
         async onDispose() {
           await new Promise((resolve) => setTimeout(resolve, 10));
           disposalOrder.push(2);
-        }
+        },
       }));
 
       await runScope(async () => {
-        await diConfigurator.resolve(DISPOSABLE_SCOPED_1);
-        await diConfigurator.resolve(DISPOSABLE_SCOPED_2);
+        await diContainer.resolve(DISPOSABLE_SCOPED_1);
+        await diContainer.resolve(DISPOSABLE_SCOPED_2);
 
         const startTime = Date.now();
-        await diConfigurator.disposeScopedServices();
+        await diContainer.disposeScopedServices();
         const endTime = Date.now();
 
         assert.ok(endTime - startTime < 30, "Should dispose concurrently");
@@ -985,20 +976,20 @@ describe("DiContainer", () => {
         name: "unresolved-service",
         onDispose() {
           unresolvedDisposeCount++;
-        }
+        },
       }));
 
       diConfigurator.addScoped(RESOLVED_SCOPED, async () => ({
         name: "resolved-service",
         onDispose() {
           resolvedDisposeCount++;
-        }
+        },
       }));
 
       await runScope(async () => {
-        await diConfigurator.resolve(RESOLVED_SCOPED);
+        await diContainer.resolve(RESOLVED_SCOPED);
 
-        await diConfigurator.disposeScopedServices();
+        await diContainer.disposeScopedServices();
 
         assert.equal(
           unresolvedDisposeCount,
@@ -1023,7 +1014,7 @@ describe("DiContainer", () => {
         name: "disposable-service",
         onDispose() {
           disposableCallCount++;
-        }
+        },
       }));
 
       diConfigurator.addScoped(NON_DISPOSABLE_SCOPED, async () => {
@@ -1032,13 +1023,13 @@ describe("DiContainer", () => {
       });
 
       await runScope(async () => {
-        await diConfigurator.resolve(DISPOSABLE_SCOPED);
-        const firstNonDisposable = await diConfigurator.resolve(
+        await diContainer.resolve(DISPOSABLE_SCOPED);
+        const firstNonDisposable = await diContainer.resolve(
           NON_DISPOSABLE_SCOPED
         );
         assert.equal(nonDisposableFactoryCount, 1);
 
-        await diConfigurator.disposeScopedServices();
+        await diContainer.disposeScopedServices();
 
         assert.equal(
           disposableCallCount,
@@ -1046,7 +1037,7 @@ describe("DiContainer", () => {
           "Disposable service should call onDispose"
         );
 
-        const secondNonDisposable = await diConfigurator.resolve(
+        const secondNonDisposable = await diContainer.resolve(
           NON_DISPOSABLE_SCOPED
         );
         assert.equal(
@@ -1066,23 +1057,23 @@ describe("DiContainer", () => {
         name: "multi-dispose-service",
         onDispose() {
           disposeCallCount++;
-        }
+        },
       }));
 
       await runScope(async () => {
-        await diConfigurator.resolve(MULTI_DISPOSE_SCOPED);
+        await diContainer.resolve(MULTI_DISPOSE_SCOPED);
 
-        await diConfigurator.disposeScopedServices();
+        await diContainer.disposeScopedServices();
         assert.equal(disposeCallCount, 1, "First disposal should work");
 
-        await diConfigurator.disposeScopedServices();
+        await diContainer.disposeScopedServices();
         assert.equal(
           disposeCallCount,
           1,
           "Second disposal should be safe (no additional calls)"
         );
 
-        await diConfigurator.disposeScopedServices();
+        await diContainer.disposeScopedServices();
         assert.equal(
           disposeCallCount,
           1,
@@ -1102,9 +1093,9 @@ describe("DIContainer | Service Override", () => {
   let diContainer: DiContainer;
 
   const runScope = async (callback: () => Promise<any>) => {
-    return await diConfigurator.runWithNewRequestScope(
-      new AsyncContextStore(),
-      callback
+    return await diContainer.runWithNewRequestScope(
+      callback,
+      new AsyncContextStore()
     );
   };
 
@@ -1127,7 +1118,7 @@ describe("DIContainer | Service Override", () => {
       return { name: "overridden-singleton-service" };
     });
 
-    const instance = await diConfigurator.resolve(SINGLETON_TOKEN);
+    const instance = await diContainer.resolve(SINGLETON_TOKEN);
     assert.deepEqual(instance, { name: "first-singleton-service" });
   });
 
@@ -1141,7 +1132,7 @@ describe("DIContainer | Service Override", () => {
     });
 
     await runScope(async () => {
-      const instance = await diConfigurator.resolve(SCOPED_TOKEN);
+      const instance = await diContainer.resolve(SCOPED_TOKEN);
       assert.deepEqual(instance, { name: "first-scoped-service" });
     });
   });
@@ -1155,7 +1146,7 @@ describe("DIContainer | Service Override", () => {
       return { name: "overridden-transient-service" };
     });
 
-    const instance = await diConfigurator.resolve(TRANSIENT_TOKEN);
+    const instance = await diContainer.resolve(TRANSIENT_TOKEN);
     assert.deepEqual(instance, { name: "first-transient-service" });
   });
 });
@@ -1169,9 +1160,9 @@ describe("DIContainer | Tag Functionality", () => {
   let diContainer: DiContainer;
 
   const runScope = async (callback: () => Promise<any>) => {
-    return await diConfigurator.runWithNewRequestScope(
-      new AsyncContextStore(),
-      callback
+    return await diContainer.runWithNewRequestScope(
+      callback,
+      new AsyncContextStore()
     );
   };
 
@@ -1200,22 +1191,22 @@ describe("DIContainer | Tag Functionality", () => {
         "secondary"
       );
 
-      const primaryService = await diConfigurator.resolve(
+      const primaryService = await diContainer.resolve(
         TAGGED_SINGLETON_TOKEN,
         "primary"
       );
-      const secondaryService = await diConfigurator.resolve(
+      const secondaryService = await diContainer.resolve(
         TAGGED_SINGLETON_TOKEN,
         "secondary"
       );
 
       assert.deepEqual(primaryService, {
         name: "primary-service",
-        tag: "primary"
+        tag: "primary",
       });
       assert.deepEqual(secondaryService, {
         name: "secondary-service",
-        tag: "secondary"
+        tag: "secondary",
       });
       assert.notStrictEqual(primaryService, secondaryService);
     });
@@ -1228,11 +1219,11 @@ describe("DIContainer | Tag Functionality", () => {
         "test-tag"
       );
 
-      const instance1 = await diConfigurator.resolve(
+      const instance1 = await diContainer.resolve(
         TAGGED_SINGLETON_TOKEN,
         "test-tag"
       );
-      const instance2 = await diConfigurator.resolve(
+      const instance2 = await diContainer.resolve(
         TAGGED_SINGLETON_TOKEN,
         "test-tag"
       );
@@ -1268,7 +1259,7 @@ describe("DIContainer | Tag Functionality", () => {
         "Eager singleton should be built during container build"
       );
 
-      const instance = await diConfigurator.resolve(
+      const instance = await diContainer.resolve(
         TAGGED_SINGLETON_TOKEN,
         "eager-tag"
       );
@@ -1292,22 +1283,22 @@ describe("DIContainer | Tag Functionality", () => {
       );
 
       await runScope(async () => {
-        const primaryService = await diConfigurator.resolve(
+        const primaryService = await diContainer.resolve(
           TAGGED_SCOPED_TOKEN,
           "primary"
         );
-        const secondaryService = await diConfigurator.resolve(
+        const secondaryService = await diContainer.resolve(
           TAGGED_SCOPED_TOKEN,
           "secondary"
         );
 
         assert.deepEqual(primaryService, {
           name: "scoped-primary",
-          tag: "primary"
+          tag: "primary",
         });
         assert.deepEqual(secondaryService, {
           name: "scoped-secondary",
-          tag: "secondary"
+          tag: "secondary",
         });
         assert.notStrictEqual(primaryService, secondaryService);
       });
@@ -1321,11 +1312,11 @@ describe("DIContainer | Tag Functionality", () => {
       );
 
       await runScope(async () => {
-        const instance1 = await diConfigurator.resolve(
+        const instance1 = await diContainer.resolve(
           TAGGED_SCOPED_TOKEN,
           "scope-tag"
         );
-        const instance2 = await diConfigurator.resolve(
+        const instance2 = await diContainer.resolve(
           TAGGED_SCOPED_TOKEN,
           "scope-tag"
         );
@@ -1343,7 +1334,7 @@ describe("DIContainer | Tag Functionality", () => {
 
       let firstScopeInstance: any;
       await runScope(async () => {
-        firstScopeInstance = await diConfigurator.resolve(
+        firstScopeInstance = await diContainer.resolve(
           TAGGED_SCOPED_TOKEN,
           "scope-tag"
         );
@@ -1351,7 +1342,7 @@ describe("DIContainer | Tag Functionality", () => {
 
       let secondScopeInstance: any;
       await runScope(async () => {
-        secondScopeInstance = await diConfigurator.resolve(
+        secondScopeInstance = await diContainer.resolve(
           TAGGED_SCOPED_TOKEN,
           "scope-tag"
         );
@@ -1376,30 +1367,30 @@ describe("DIContainer | Tag Functionality", () => {
         "secondary"
       );
 
-      const primaryService1 = await diConfigurator.resolve(
+      const primaryService1 = await diContainer.resolve(
         TAGGED_TRANSIENT_TOKEN,
         "primary"
       );
-      const primaryService2 = await diConfigurator.resolve(
+      const primaryService2 = await diContainer.resolve(
         TAGGED_TRANSIENT_TOKEN,
         "primary"
       );
-      const secondaryService = await diConfigurator.resolve(
+      const secondaryService = await diContainer.resolve(
         TAGGED_TRANSIENT_TOKEN,
         "secondary"
       );
 
       assert.deepEqual(primaryService1, {
         name: "transient-primary",
-        tag: "primary"
+        tag: "primary",
       });
       assert.deepEqual(primaryService2, {
         name: "transient-primary",
-        tag: "primary"
+        tag: "primary",
       });
       assert.deepEqual(secondaryService, {
         name: "transient-secondary",
-        tag: "secondary"
+        tag: "secondary",
       });
 
       // All instances should be different (transient behavior)
@@ -1414,11 +1405,11 @@ describe("DIContainer | Tag Functionality", () => {
         "transient-tag"
       );
 
-      const instance1 = await diConfigurator.resolve(
+      const instance1 = await diContainer.resolve(
         TAGGED_TRANSIENT_TOKEN,
         "transient-tag"
       );
-      const instance2 = await diConfigurator.resolve(
+      const instance2 = await diContainer.resolve(
         TAGGED_TRANSIENT_TOKEN,
         "transient-tag"
       );
@@ -1438,15 +1429,15 @@ describe("DIContainer | Tag Functionality", () => {
         "MyTag"
       );
 
-      const service1 = await diConfigurator.resolve(
+      const service1 = await diContainer.resolve(
         TAGGED_SINGLETON_TOKEN,
         "MyTag"
       );
-      const service2 = await diConfigurator.resolve(
+      const service2 = await diContainer.resolve(
         TAGGED_SINGLETON_TOKEN,
         "mytag"
       );
-      const service3 = await diConfigurator.resolve(
+      const service3 = await diContainer.resolve(
         TAGGED_SINGLETON_TOKEN,
         "MYTAG"
       );
@@ -1463,12 +1454,12 @@ describe("DIContainer | Tag Functionality", () => {
         // No tag parameter - should use "default"
       );
 
-      const service1 = await diConfigurator.resolve(TAGGED_SINGLETON_TOKEN); // No tag
-      const service2 = await diConfigurator.resolve(
+      const service1 = await diContainer.resolve(TAGGED_SINGLETON_TOKEN); // No tag
+      const service2 = await diContainer.resolve(
         TAGGED_SINGLETON_TOKEN,
         "default"
       );
-      const service3 = await diConfigurator.resolve(
+      const service3 = await diContainer.resolve(
         TAGGED_SINGLETON_TOKEN,
         "DEFAULT"
       );
@@ -1482,10 +1473,10 @@ describe("DIContainer | Tag Functionality", () => {
   describe("Default Tag Behavior", () => {
     it("should resolve services without tags using default tag", async () => {
       diConfigurator.addSingleton(TAGGED_SINGLETON_TOKEN, async () => ({
-        name: "no-tag-service"
+        name: "no-tag-service",
       }));
 
-      const service = await diConfigurator.resolve(TAGGED_SINGLETON_TOKEN);
+      const service = await diContainer.resolve(TAGGED_SINGLETON_TOKEN);
       assert.deepEqual(service, { name: "no-tag-service" });
     });
 
@@ -1504,7 +1495,7 @@ describe("DIContainer | Tag Functionality", () => {
         // No tag - should normalize to "default"
       );
 
-      const service = await diConfigurator.resolve(TAGGED_SINGLETON_TOKEN);
+      const service = await diContainer.resolve(TAGGED_SINGLETON_TOKEN);
       // Should get the first registered service (explicit default)
       assert.deepEqual(service, { name: "explicit-default-service" });
     });
@@ -1526,7 +1517,7 @@ describe("DIContainer | Tag Functionality", () => {
         "same-tag"
       );
 
-      const service = await diConfigurator.resolve(
+      const service = await diContainer.resolve(
         TAGGED_SINGLETON_TOKEN,
         "same-tag"
       );
@@ -1548,11 +1539,11 @@ describe("DIContainer | Tag Functionality", () => {
         "tag2"
       );
 
-      const service1 = await diConfigurator.resolve(
+      const service1 = await diContainer.resolve(
         TAGGED_SINGLETON_TOKEN,
         "tag1"
       );
-      const service2 = await diConfigurator.resolve(
+      const service2 = await diContainer.resolve(
         TAGGED_SINGLETON_TOKEN,
         "tag2"
       );
@@ -1573,7 +1564,7 @@ describe("DIContainer | Tag Functionality", () => {
       );
 
       await assert.rejects(
-        diConfigurator.resolve(TAGGED_SINGLETON_TOKEN, "non-existent-tag"),
+        diContainer.resolve(TAGGED_SINGLETON_TOKEN, "non-existent-tag"),
         /Service for token .* is not registered/
       );
     });
@@ -1586,7 +1577,7 @@ describe("DIContainer | Tag Functionality", () => {
       );
 
       await assert.rejects(
-        diConfigurator.resolve(TAGGED_SCOPED_TOKEN, "scoped-tag"),
+        diContainer.resolve(TAGGED_SCOPED_TOKEN, "scoped-tag"),
         /Cannot resolve request-scoped service/
       );
     });
@@ -1607,7 +1598,7 @@ describe("DIContainer | Tag Functionality", () => {
             },
             onDispose() {
               disposeCount++;
-            }
+            },
           };
           return service;
         },
@@ -1615,10 +1606,10 @@ describe("DIContainer | Tag Functionality", () => {
         "hooked-tag"
       );
 
-      await diConfigurator.resolve(TAGGED_SINGLETON_TOKEN, "hooked-tag");
+      await diContainer.resolve(TAGGED_SINGLETON_TOKEN, "hooked-tag");
       assert.equal(constructCount, 1);
 
-      await diConfigurator.dispose();
+      await diContainer.dispose();
       assert.equal(disposeCount, 1);
     });
 
@@ -1636,7 +1627,7 @@ describe("DIContainer | Tag Functionality", () => {
             },
             onDispose() {
               disposeCount++;
-            }
+            },
           };
           return service;
         },
@@ -1644,7 +1635,7 @@ describe("DIContainer | Tag Functionality", () => {
       );
 
       await runScope(async () => {
-        await diConfigurator.resolve(TAGGED_SCOPED_TOKEN, "scoped-hooked-tag");
+        await diContainer.resolve(TAGGED_SCOPED_TOKEN, "scoped-hooked-tag");
         assert.equal(constructCount, 1);
       });
 
@@ -1664,7 +1655,11 @@ describe("DIContainer | Tag Functionality", () => {
           MULTI_SINGLETON_TOKEN,
           async () => {
             factoryCallCount++;
-            return { name: "primary-service", tag: "primary", id: factoryCallCount };
+            return {
+              name: "primary-service",
+              tag: "primary",
+              id: factoryCallCount,
+            };
           },
           undefined,
           "primary"
@@ -1674,13 +1669,17 @@ describe("DIContainer | Tag Functionality", () => {
           MULTI_SINGLETON_TOKEN,
           async () => {
             factoryCallCount++;
-            return { name: "secondary-service", tag: "secondary", id: factoryCallCount };
+            return {
+              name: "secondary-service",
+              tag: "secondary",
+              id: factoryCallCount,
+            };
           },
           undefined,
           "secondary"
         );
 
-        const services = await diConfigurator.resolveAll(MULTI_SINGLETON_TOKEN);
+        const services = await diContainer.resolveAll(MULTI_SINGLETON_TOKEN);
 
         assert.equal(services.length, 2);
         assert.equal(factoryCallCount, 2);
@@ -1699,7 +1698,11 @@ describe("DIContainer | Tag Functionality", () => {
           MULTI_SCOPED_TOKEN,
           async () => {
             factoryCallCount++;
-            return { name: "scoped-primary", tag: "primary", id: factoryCallCount };
+            return {
+              name: "scoped-primary",
+              tag: "primary",
+              id: factoryCallCount,
+            };
           },
           "primary"
         );
@@ -1708,13 +1711,17 @@ describe("DIContainer | Tag Functionality", () => {
           MULTI_SCOPED_TOKEN,
           async () => {
             factoryCallCount++;
-            return { name: "scoped-secondary", tag: "secondary", id: factoryCallCount };
+            return {
+              name: "scoped-secondary",
+              tag: "secondary",
+              id: factoryCallCount,
+            };
           },
           "secondary"
         );
 
         await runScope(async () => {
-          const services = await diConfigurator.resolveAll(MULTI_SCOPED_TOKEN);
+          const services = await diContainer.resolveAll(MULTI_SCOPED_TOKEN);
 
           assert.equal(services.length, 2);
           assert.equal(factoryCallCount, 2);
@@ -1733,7 +1740,11 @@ describe("DIContainer | Tag Functionality", () => {
           MULTI_TRANSIENT_TOKEN,
           async () => {
             factoryCallCount++;
-            return { name: "transient-primary", tag: "primary", id: factoryCallCount };
+            return {
+              name: "transient-primary",
+              tag: "primary",
+              id: factoryCallCount,
+            };
           },
           "primary"
         );
@@ -1742,12 +1753,16 @@ describe("DIContainer | Tag Functionality", () => {
           MULTI_TRANSIENT_TOKEN,
           async () => {
             factoryCallCount++;
-            return { name: "transient-secondary", tag: "secondary", id: factoryCallCount };
+            return {
+              name: "transient-secondary",
+              tag: "secondary",
+              id: factoryCallCount,
+            };
           },
           "secondary"
         );
 
-        const services = await diConfigurator.resolveAll(MULTI_TRANSIENT_TOKEN);
+        const services = await diContainer.resolveAll(MULTI_TRANSIENT_TOKEN);
 
         assert.equal(services.length, 2);
         assert.equal(factoryCallCount, 2);
@@ -1761,16 +1776,13 @@ describe("DIContainer | Tag Functionality", () => {
         const TRANSIENT_ALL_TOKEN = "TRANSIENT_ALL_TOKEN";
         let factoryCallCount = 0;
 
-        diConfigurator.addTransient(
-          TRANSIENT_ALL_TOKEN,
-          async () => {
-            factoryCallCount++;
-            return { name: "transient-service", id: factoryCallCount };
-          }
-        );
+        diConfigurator.addTransient(TRANSIENT_ALL_TOKEN, async () => {
+          factoryCallCount++;
+          return { name: "transient-service", id: factoryCallCount };
+        });
 
-        const firstCall = await diConfigurator.resolveAll(TRANSIENT_ALL_TOKEN);
-        const secondCall = await diConfigurator.resolveAll(TRANSIENT_ALL_TOKEN);
+        const firstCall = await diContainer.resolveAll(TRANSIENT_ALL_TOKEN);
+        const secondCall = await diContainer.resolveAll(TRANSIENT_ALL_TOKEN);
 
         assert.equal(firstCall.length, 1);
         assert.equal(secondCall.length, 1);
@@ -1782,16 +1794,13 @@ describe("DIContainer | Tag Functionality", () => {
         const SINGLETON_ALL_TOKEN = "SINGLETON_ALL_TOKEN";
         let factoryCallCount = 0;
 
-        diConfigurator.addSingleton(
-          SINGLETON_ALL_TOKEN,
-          async () => {
-            factoryCallCount++;
-            return { name: "singleton-service", id: factoryCallCount };
-          }
-        );
+        diConfigurator.addSingleton(SINGLETON_ALL_TOKEN, async () => {
+          factoryCallCount++;
+          return { name: "singleton-service", id: factoryCallCount };
+        });
 
-        const firstCall = await diConfigurator.resolveAll(SINGLETON_ALL_TOKEN);
-        const secondCall = await diConfigurator.resolveAll(SINGLETON_ALL_TOKEN);
+        const firstCall = await diContainer.resolveAll(SINGLETON_ALL_TOKEN);
+        const secondCall = await diContainer.resolveAll(SINGLETON_ALL_TOKEN);
 
         assert.equal(firstCall.length, 1);
         assert.equal(secondCall.length, 1);
@@ -1803,17 +1812,14 @@ describe("DIContainer | Tag Functionality", () => {
         const SCOPED_ALL_TOKEN = "SCOPED_ALL_TOKEN";
         let factoryCallCount = 0;
 
-        diConfigurator.addScoped(
-          SCOPED_ALL_TOKEN,
-          async () => {
-            factoryCallCount++;
-            return { name: "scoped-service", id: factoryCallCount };
-          }
-        );
+        diConfigurator.addScoped(SCOPED_ALL_TOKEN, async () => {
+          factoryCallCount++;
+          return { name: "scoped-service", id: factoryCallCount };
+        });
 
         await runScope(async () => {
-          const firstCall = await diConfigurator.resolveAll(SCOPED_ALL_TOKEN);
-          const secondCall = await diConfigurator.resolveAll(SCOPED_ALL_TOKEN);
+          const firstCall = await diContainer.resolveAll(SCOPED_ALL_TOKEN);
+          const secondCall = await diContainer.resolveAll(SCOPED_ALL_TOKEN);
 
           assert.equal(firstCall.length, 1);
           assert.equal(secondCall.length, 1);
@@ -1823,13 +1829,12 @@ describe("DIContainer | Tag Functionality", () => {
       });
     });
 
-
     describe("Error Handling", () => {
       it("should throw UnregisteredDependencyError when no services are registered", async () => {
         const NON_EXISTENT_TOKEN = "NON_EXISTENT_ALL_TOKEN";
 
         await assert.rejects(
-          diConfigurator.resolveAll(NON_EXISTENT_TOKEN),
+          diContainer.resolveAll(NON_EXISTENT_TOKEN),
           (err: any) => {
             assert.ok(err instanceof UnregisteredDependencyError);
             assert.match(
@@ -1844,13 +1849,12 @@ describe("DIContainer | Tag Functionality", () => {
       it("should throw RequestScopeResolutionError when resolving scoped services outside scope", async () => {
         const SCOPED_OUTSIDE_TOKEN = "SCOPED_OUTSIDE_TOKEN";
 
-        diConfigurator.addScoped(
-          SCOPED_OUTSIDE_TOKEN,
-          async () => ({ name: "scoped-service" })
-        );
+        diConfigurator.addScoped(SCOPED_OUTSIDE_TOKEN, async () => ({
+          name: "scoped-service",
+        }));
 
         await assert.rejects(
-          diConfigurator.resolveAll(SCOPED_OUTSIDE_TOKEN),
+          diContainer.resolveAll(SCOPED_OUTSIDE_TOKEN),
           /Cannot resolve request-scoped service/
         );
       });
@@ -1872,7 +1876,7 @@ describe("DIContainer | Tag Functionality", () => {
         });
 
         await assert.rejects(
-          diConfigurator.resolveAll(CIRCULAR_ALL_A),
+          diContainer.resolveAll(CIRCULAR_ALL_A),
           (err: any) => {
             assert.ok(err instanceof CircularDependencyError);
             assert.ok(
@@ -1897,7 +1901,7 @@ describe("DIContainer | Tag Functionality", () => {
         });
 
         await assert.rejects(
-          diConfigurator.resolveAll(SELF_CIRCULAR_TOKEN),
+          diContainer.resolveAll(SELF_CIRCULAR_TOKEN),
           (err: any) => {
             assert.ok(err instanceof CircularDependencyError);
             assert.ok(err.chain?.includes(SELF_CIRCULAR_TOKEN));
@@ -1919,7 +1923,7 @@ describe("DIContainer | Tag Functionality", () => {
               name: "hooked-primary",
               onConstruct() {
                 constructCallCount++;
-              }
+              },
             };
             return service;
           },
@@ -1934,7 +1938,7 @@ describe("DIContainer | Tag Functionality", () => {
               name: "hooked-secondary",
               onConstruct() {
                 constructCallCount++;
-              }
+              },
             };
             return service;
           },
@@ -1942,7 +1946,7 @@ describe("DIContainer | Tag Functionality", () => {
           "secondary"
         );
 
-        const services = await diConfigurator.resolveAll(HOOKED_SINGLETON_TOKEN);
+        const services = await diContainer.resolveAll(HOOKED_SINGLETON_TOKEN);
 
         assert.equal(services.length, 2);
         assert.equal(constructCallCount, 2);
@@ -1959,7 +1963,7 @@ describe("DIContainer | Tag Functionality", () => {
               name: "hooked-scoped-primary",
               onConstruct() {
                 constructCallCount++;
-              }
+              },
             };
             return service;
           },
@@ -1973,7 +1977,7 @@ describe("DIContainer | Tag Functionality", () => {
               name: "hooked-scoped-secondary",
               onConstruct() {
                 constructCallCount++;
-              }
+              },
             };
             return service;
           },
@@ -1981,7 +1985,7 @@ describe("DIContainer | Tag Functionality", () => {
         );
 
         await runScope(async () => {
-          const services = await diConfigurator.resolveAll(HOOKED_SCOPED_TOKEN);
+          const services = await diContainer.resolveAll(HOOKED_SCOPED_TOKEN);
 
           assert.equal(services.length, 2);
           assert.equal(constructCallCount, 2);
@@ -1992,24 +1996,21 @@ describe("DIContainer | Tag Functionality", () => {
         const HOOKED_TRANSIENT_TOKEN = "HOOKED_TRANSIENT_TOKEN";
         let constructCallCount = 0;
 
-        diConfigurator.addTransient(
-          HOOKED_TRANSIENT_TOKEN,
-          async () => {
-            const service: IOnConstruct & { name: string } = {
-              name: "hooked-transient",
-              onConstruct() {
-                constructCallCount++;
-              }
-            };
-            return service;
-          }
-        );
+        diConfigurator.addTransient(HOOKED_TRANSIENT_TOKEN, async () => {
+          const service: IOnConstruct & { name: string } = {
+            name: "hooked-transient",
+            onConstruct() {
+              constructCallCount++;
+            },
+          };
+          return service;
+        });
 
-        await diConfigurator.resolveAll(HOOKED_TRANSIENT_TOKEN);
+        await diContainer.resolveAll(HOOKED_TRANSIENT_TOKEN);
         assert.equal(constructCallCount, 1);
 
         // Call again - should create new instance and call onConstruct again
-        await diConfigurator.resolveAll(HOOKED_TRANSIENT_TOKEN);
+        await diContainer.resolveAll(HOOKED_TRANSIENT_TOKEN);
         assert.equal(constructCallCount, 2);
       });
     });
@@ -2019,20 +2020,17 @@ describe("DIContainer | Tag Functionality", () => {
         const CONCURRENT_ALL_TOKEN = "CONCURRENT_ALL_TOKEN";
         let factoryCallCount = 0;
 
-        diConfigurator.addSingleton(
-          CONCURRENT_ALL_TOKEN,
-          async () => {
-            factoryCallCount++;
-            // Simulate async work
-            await new Promise((resolve) => setTimeout(resolve, 10));
-            return { name: "concurrent-service", id: factoryCallCount };
-          }
-        );
+        diConfigurator.addSingleton(CONCURRENT_ALL_TOKEN, async () => {
+          factoryCallCount++;
+          // Simulate async work
+          await new Promise((resolve) => setTimeout(resolve, 10));
+          return { name: "concurrent-service", id: factoryCallCount };
+        });
 
         const [result1, result2, result3] = await Promise.all([
-          diConfigurator.resolveAll(CONCURRENT_ALL_TOKEN),
-          diConfigurator.resolveAll(CONCURRENT_ALL_TOKEN),
-          diConfigurator.resolveAll(CONCURRENT_ALL_TOKEN)
+          diContainer.resolveAll(CONCURRENT_ALL_TOKEN),
+          diContainer.resolveAll(CONCURRENT_ALL_TOKEN),
+          diContainer.resolveAll(CONCURRENT_ALL_TOKEN),
         ]);
 
         // Should create singleton only once
@@ -2050,20 +2048,17 @@ describe("DIContainer | Tag Functionality", () => {
         const CONCURRENT_SCOPED_TOKEN = "CONCURRENT_SCOPED_TOKEN";
         let factoryCallCount = 0;
 
-        diConfigurator.addScoped(
-          CONCURRENT_SCOPED_TOKEN,
-          async () => {
-            factoryCallCount++;
-            await new Promise((resolve) => setTimeout(resolve, 10));
-            return { name: "concurrent-scoped", id: factoryCallCount };
-          }
-        );
+        diConfigurator.addScoped(CONCURRENT_SCOPED_TOKEN, async () => {
+          factoryCallCount++;
+          await new Promise((resolve) => setTimeout(resolve, 10));
+          return { name: "concurrent-scoped", id: factoryCallCount };
+        });
 
         await runScope(async () => {
           const [result1, result2, result3] = await Promise.all([
-            diConfigurator.resolveAll(CONCURRENT_SCOPED_TOKEN),
-            diConfigurator.resolveAll(CONCURRENT_SCOPED_TOKEN),
-            diConfigurator.resolveAll(CONCURRENT_SCOPED_TOKEN)
+            diContainer.resolveAll(CONCURRENT_SCOPED_TOKEN),
+            diContainer.resolveAll(CONCURRENT_SCOPED_TOKEN),
+            diContainer.resolveAll(CONCURRENT_SCOPED_TOKEN),
           ]);
 
           // Should create scoped service only once within the scope
@@ -2095,7 +2090,7 @@ describe("DIContainer | Tag Functionality", () => {
           return { name: "valid-service" }; // Normal case
         });
 
-        const services = await diConfigurator.resolveAll(EMPTY_REGISTRY_TOKEN);
+        const services = await diContainer.resolveAll(EMPTY_REGISTRY_TOKEN);
         assert.equal(services.length, 1);
         assert.deepEqual(services[0], { name: "valid-service" });
       });
@@ -2113,26 +2108,32 @@ describe("DIContainer | Tag Functionality", () => {
         // Register singleton services with different token types
         diConfigurator.addSingleton(STRING_TOKEN, async () => ({
           type: "string",
-          name: "string-service"
+          name: "string-service",
         }));
 
         diConfigurator.addSingleton(SYMBOL_TOKEN, async () => ({
           type: "symbol",
-          name: "symbol-service"
+          name: "symbol-service",
         }));
 
         diConfigurator.addSingleton(TestService, async () => new TestService());
 
-        const stringServices = await diConfigurator.resolveAll(STRING_TOKEN);
-        const symbolServices = await diConfigurator.resolveAll(SYMBOL_TOKEN);
-        const classServices = await diConfigurator.resolveAll(TestService);
+        const stringServices = await diContainer.resolveAll(STRING_TOKEN);
+        const symbolServices = await diContainer.resolveAll(SYMBOL_TOKEN);
+        const classServices = await diContainer.resolveAll(TestService);
 
         assert.equal(stringServices.length, 1);
         assert.equal(symbolServices.length, 1);
         assert.equal(classServices.length, 1);
 
-        assert.deepEqual(stringServices[0], { type: "string", name: "string-service" });
-        assert.deepEqual(symbolServices[0], { type: "symbol", name: "symbol-service" });
+        assert.deepEqual(stringServices[0], {
+          type: "string",
+          name: "string-service",
+        });
+        assert.deepEqual(symbolServices[0], {
+          type: "symbol",
+          name: "symbol-service",
+        });
         assert.ok(classServices[0] instanceof TestService);
       });
     });
@@ -2149,11 +2150,11 @@ describe("DIContainer | Tag Functionality", () => {
         "my-tag"
       );
 
-      const service = await diConfigurator.resolveTagged<any>("my-tag");
+      const service = await diContainer.resolveTagged<any>("my-tag");
 
       assert.deepEqual(service, {
         name: "tagged-singleton",
-        type: "singleton"
+        type: "singleton",
       });
     });
 
@@ -2167,7 +2168,7 @@ describe("DIContainer | Tag Functionality", () => {
       );
 
       await runScope(async () => {
-        const service = await diConfigurator.resolveTagged<any>("scoped-tag");
+        const service = await diContainer.resolveTagged<any>("scoped-tag");
         assert.deepEqual(service, { name: "tagged-scoped", type: "scoped" });
       });
     });
@@ -2180,13 +2181,13 @@ describe("DIContainer | Tag Functionality", () => {
         async () => ({
           name: "tagged-transient",
           type: "transient",
-          id: Math.random()
+          id: Math.random(),
         }),
         "transient-tag"
       );
 
-      const service1 = await diConfigurator.resolveTagged<any>("transient-tag");
-      const service2 = await diConfigurator.resolveTagged<any>("transient-tag");
+      const service1 = await diContainer.resolveTagged<any>("transient-tag");
+      const service2 = await diContainer.resolveTagged<any>("transient-tag");
 
       assert.equal(service1.name, "tagged-transient");
       assert.equal(service2.name, "tagged-transient");
@@ -2195,9 +2196,7 @@ describe("DIContainer | Tag Functionality", () => {
     });
 
     it("should return undefined when tag is not found", async () => {
-      const service = await diConfigurator.resolveTagged<any>(
-        "non-existent-tag"
-      );
+      const service = await diContainer.resolveTagged<any>("non-existent-tag");
       assert.equal(service, undefined);
     });
 
@@ -2211,9 +2210,9 @@ describe("DIContainer | Tag Functionality", () => {
         "MyTag"
       );
 
-      const service1 = await diConfigurator.resolveTagged<any>("MyTag");
-      const service2 = await diConfigurator.resolveTagged<any>("mytag");
-      const service3 = await diConfigurator.resolveTagged<any>("MYTAG");
+      const service1 = await diContainer.resolveTagged<any>("MyTag");
+      const service2 = await diContainer.resolveTagged<any>("mytag");
+      const service3 = await diContainer.resolveTagged<any>("MYTAG");
 
       assert.deepEqual(service1, { name: "case-insensitive-service" });
       assert.strictEqual(service1, service2);
@@ -2229,8 +2228,8 @@ describe("DIContainer | Tag Functionality", () => {
         // No tag parameter - should use "default"
       );
 
-      const service1 = await diConfigurator.resolveTagged<any>("default");
-      const service2 = await diConfigurator.resolveTagged<any>("DEFAULT");
+      const service1 = await diContainer.resolveTagged<any>("default");
+      const service2 = await diContainer.resolveTagged<any>("DEFAULT");
 
       assert.deepEqual(service1, { name: "default-tagged-service" });
       assert.strictEqual(service1, service2);
@@ -2254,7 +2253,7 @@ describe("DIContainer | Tag Functionality", () => {
         "shared-tag"
       );
 
-      const service = await diConfigurator.resolveTagged<any>("shared-tag");
+      const service = await diContainer.resolveTagged<any>("shared-tag");
 
       // Should resolve the first registered service with the tag
       assert.deepEqual(service, { name: "service-a", token: "A" });
@@ -2270,7 +2269,7 @@ describe("DIContainer | Tag Functionality", () => {
       );
 
       await assert.rejects(
-        diConfigurator.resolveTagged<any>("scope-required-tag"),
+        diContainer.resolveTagged<any>("scope-required-tag"),
         /Cannot resolve request-scoped service/
       );
     });
@@ -2290,7 +2289,7 @@ describe("DIContainer | Tag Functionality", () => {
             },
             onDispose() {
               disposeCount++;
-            }
+            },
           };
           return service;
         },
@@ -2298,10 +2297,10 @@ describe("DIContainer | Tag Functionality", () => {
         "hooked-tag"
       );
 
-      await diConfigurator.resolveTagged<any>("hooked-tag");
+      await diContainer.resolveTagged<any>("hooked-tag");
       assert.equal(constructCount, 1);
 
-      await diConfigurator.dispose();
+      await diContainer.dispose();
       assert.equal(disposeCount, 1);
     });
 
@@ -2319,9 +2318,9 @@ describe("DIContainer | Tag Functionality", () => {
         "singleton-tag"
       );
 
-      const service1 = await diConfigurator.resolveTagged<any>("singleton-tag");
-      const service2 = await diConfigurator.resolveTagged<any>("singleton-tag");
-      const service3 = await diConfigurator.resolveTagged<any>("singleton-tag");
+      const service1 = await diContainer.resolveTagged<any>("singleton-tag");
+      const service2 = await diContainer.resolveTagged<any>("singleton-tag");
+      const service3 = await diContainer.resolveTagged<any>("singleton-tag");
 
       assert.equal(factoryCallCount, 1);
       assert.strictEqual(service1, service2);
@@ -2343,10 +2342,10 @@ describe("DIContainer | Tag Functionality", () => {
       );
 
       await runScope(async () => {
-        const service1 = await diConfigurator.resolveTagged<any>(
+        const service1 = await diContainer.resolveTagged<any>(
           "scoped-instance-tag"
         );
-        const service2 = await diConfigurator.resolveTagged<any>(
+        const service2 = await diContainer.resolveTagged<any>(
           "scoped-instance-tag"
         );
 
@@ -2356,7 +2355,7 @@ describe("DIContainer | Tag Functionality", () => {
       });
 
       await runScope(async () => {
-        const service3 = await diConfigurator.resolveTagged<any>(
+        const service3 = await diContainer.resolveTagged<any>(
           "scoped-instance-tag"
         );
 
@@ -2382,9 +2381,9 @@ describe("DIContainer | Tag Functionality", () => {
       );
 
       const [service1, service2, service3] = await Promise.all([
-        diConfigurator.resolveTagged<any>("concurrent-tag"),
-        diConfigurator.resolveTagged<any>("concurrent-tag"),
-        diConfigurator.resolveTagged<any>("concurrent-tag")
+        diContainer.resolveTagged<any>("concurrent-tag"),
+        diContainer.resolveTagged<any>("concurrent-tag"),
+        diContainer.resolveTagged<any>("concurrent-tag"),
       ]);
 
       assert.equal(factoryCallCount, 1);
@@ -2403,10 +2402,10 @@ describe("DIContainer | Tag Functionality", () => {
         "symbol-tag"
       );
 
-      const service = await diConfigurator.resolveTagged<any>("symbol-tag");
+      const service = await diContainer.resolveTagged<any>("symbol-tag");
       assert.deepEqual(service, {
         name: "symbol-service",
-        tokenType: "symbol"
+        tokenType: "symbol",
       });
     });
 
@@ -2423,9 +2422,7 @@ describe("DIContainer | Tag Functionality", () => {
         "class-tag"
       );
 
-      const service = await diConfigurator.resolveTagged<TestService>(
-        "class-tag"
-      );
+      const service = await diContainer.resolveTagged<TestService>("class-tag");
       assert.ok(service instanceof TestService);
       assert.equal(service?.name, "class-service");
       assert.equal(service?.tokenType, "class");
@@ -2441,8 +2438,8 @@ describe("DIContainer | Tag Functionality", () => {
         "" // Empty string should normalize to "default"
       );
 
-      const service1 = await diConfigurator.resolveTagged<any>("");
-      const service2 = await diConfigurator.resolveTagged<any>("default");
+      const service1 = await diContainer.resolveTagged<any>("");
+      const service2 = await diContainer.resolveTagged<any>("default");
 
       assert.deepEqual(service1, { name: "empty-tag-service" });
       assert.strictEqual(service1, service2);

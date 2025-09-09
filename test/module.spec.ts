@@ -1,6 +1,6 @@
 import { beforeEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { DiConfigurator, DiModule, IDiModule } from "../src";
+import { DiConfigurator, DiModule, IDiContainer, IDiModule } from "../src";
 import { AsyncContextStore } from "@apiratorjs/async-context";
 
 describe("Module", () => {
@@ -20,9 +20,9 @@ describe("Module", () => {
           {
             token: TEST_TOKEN,
             useFactory: () => testValue,
-            lifetime: "singleton"
-          }
-        ]
+            lifetime: "singleton",
+          },
+        ],
       });
 
       configurator.addModule(testModule);
@@ -49,19 +49,19 @@ describe("Module", () => {
           {
             token: SINGLETON_TOKEN,
             useFactory: () => new TestService(),
-            lifetime: "singleton"
+            lifetime: "singleton",
           },
           {
             token: SCOPED_TOKEN,
             useFactory: () => new TestService(),
-            lifetime: "scoped"
+            lifetime: "scoped",
           },
           {
             token: TRANSIENT_TOKEN,
             useFactory: () => new TestService(),
-            lifetime: "transient"
-          }
-        ]
+            lifetime: "transient",
+          },
+        ],
       });
 
       configurator.addModule(testModule);
@@ -75,30 +75,21 @@ describe("Module", () => {
       const transient2 = await container.resolve(TRANSIENT_TOKEN);
       assert.notStrictEqual(transient1, transient2);
 
-      await container.runWithNewRequestScope(
-        new AsyncContextStore(),
-        async (scopedContainer) => {
-          const scoped1 = await scopedContainer.resolve(SCOPED_TOKEN);
-          const scoped2 = await scopedContainer.resolve(SCOPED_TOKEN);
-          assert.strictEqual(scoped1, scoped2);
-        }
-      );
+      await container.runWithNewRequestScope(async (scopedContainer) => {
+        const scoped1 = await scopedContainer.resolve(SCOPED_TOKEN);
+        const scoped2 = await scopedContainer.resolve(SCOPED_TOKEN);
+        assert.strictEqual(scoped1, scoped2);
+      }, new AsyncContextStore());
 
       let instance1: any;
-      await container.runWithNewRequestScope(
-        new AsyncContextStore(),
-        async (scope1) => {
-          instance1 = await scope1.resolve(SCOPED_TOKEN);
-        }
-      );
+      await container.runWithNewRequestScope(async (scope1) => {
+        instance1 = await scope1.resolve(SCOPED_TOKEN);
+      }, new AsyncContextStore());
 
       let instance2: any;
-      await container.runWithNewRequestScope(
-        new AsyncContextStore(),
-        async (scope2) => {
-          instance2 = await scope2.resolve(SCOPED_TOKEN);
-        }
-      );
+      await container.runWithNewRequestScope(async (scope2) => {
+        instance2 = await scope2.resolve(SCOPED_TOKEN);
+      }, new AsyncContextStore());
 
       assert.notStrictEqual(instance1, instance2);
     });
@@ -116,9 +107,9 @@ describe("Module", () => {
           {
             token: TEST_TOKEN,
             useFactory: factoryFn,
-            lifetime: "singleton"
-          }
-        ]
+            lifetime: "singleton",
+          },
+        ],
       });
 
       configurator.addModule(testModule);
@@ -142,9 +133,9 @@ describe("Module", () => {
           {
             token: TOKEN_A,
             useFactory: () => "A",
-            lifetime: "singleton"
-          }
-        ]
+            lifetime: "singleton",
+          },
+        ],
       });
 
       const moduleB = DiModule.create({
@@ -152,9 +143,9 @@ describe("Module", () => {
           {
             token: TOKEN_B,
             useFactory: () => "B",
-            lifetime: "singleton"
-          }
-        ]
+            lifetime: "singleton",
+          },
+        ],
       });
 
       const compositeModule = DiModule.create({
@@ -163,9 +154,9 @@ describe("Module", () => {
           {
             token: TOKEN_C,
             useFactory: () => "C",
-            lifetime: "singleton"
-          }
-        ]
+            lifetime: "singleton",
+          },
+        ],
       });
 
       configurator.addModule(compositeModule);
@@ -184,7 +175,7 @@ describe("Module", () => {
         register: (config) => {
           registerCount++;
           config.addSingleton(TEST_TOKEN, () => "test");
-        }
+        },
       };
 
       configurator.addModule(testModule);
@@ -202,14 +193,14 @@ describe("Module", () => {
         register: (config) => {
           config.addSingleton(TOKEN_A, () => "Value A");
           config.addModule(moduleB);
-        }
+        },
       };
 
       const moduleB: IDiModule = {
         register: (config) => {
           config.addSingleton(TOKEN_B, () => "Value B");
           config.addModule(moduleA);
-        }
+        },
       };
 
       configurator.addModule(moduleA);
@@ -247,9 +238,9 @@ describe("Module", () => {
           {
             token: CONFIG_TOKEN,
             useFactory: () => ({ logPrefix: "TEST" }),
-            lifetime: "singleton"
-          }
-        ]
+            lifetime: "singleton",
+          },
+        ],
       });
 
       const loggerModule = DiModule.create({
@@ -257,13 +248,13 @@ describe("Module", () => {
         providers: [
           {
             token: LOGGER_TOKEN,
-            useFactory: async (di: DiConfigurator) => {
+            useFactory: async (di: IDiContainer) => {
               const config = await di.resolve(CONFIG_TOKEN);
               return new Logger(config);
             },
-            lifetime: "singleton"
-          }
-        ]
+            lifetime: "singleton",
+          },
+        ],
       });
 
       const serviceModule = DiModule.create({
@@ -271,19 +262,21 @@ describe("Module", () => {
         providers: [
           {
             token: SERVICE_TOKEN,
-            useFactory: async (di: DiConfigurator) => {
+            useFactory: async (di: IDiContainer) => {
               const logger = await di.resolveRequired<Logger>(LOGGER_TOKEN);
               return new TestService(logger);
             },
-            lifetime: "singleton"
-          }
-        ]
+            lifetime: "singleton",
+          },
+        ],
       });
 
       configurator.addModule(serviceModule);
       const container = await configurator.build();
 
-      const service = await container.resolveRequired<TestService>(SERVICE_TOKEN);
+      const service = await container.resolveRequired<TestService>(
+        SERVICE_TOKEN
+      );
       const result = service.performOperation();
 
       assert.equal(result, "TEST: Operation performed");
@@ -318,7 +311,10 @@ describe("Module", () => {
       }
 
       class UserServiceImpl implements IUserService {
-        constructor(private logger: ILogger, private authService: IAuthService) {}
+        constructor(
+          private logger: ILogger,
+          private authService: IAuthService
+        ) {}
 
         getCurrentUser(): string {
           this.logger.log("Getting current user");
@@ -335,9 +331,9 @@ describe("Module", () => {
           {
             token: LOGGER,
             useFactory: () => new ConsoleLogger(),
-            lifetime: "singleton"
-          }
-        ]
+            lifetime: "singleton",
+          },
+        ],
       });
 
       const AuthModule = DiModule.create({
@@ -345,13 +341,13 @@ describe("Module", () => {
         providers: [
           {
             token: AUTH_SERVICE,
-            useFactory: async (di: DiConfigurator) => {
+            useFactory: async (di: IDiContainer) => {
               const logger = await di.resolveRequired<ILogger>(LOGGER);
               return new AuthServiceImpl(logger);
             },
-            lifetime: "singleton"
-          }
-        ]
+            lifetime: "singleton",
+          },
+        ],
       });
 
       const UserModule = DiModule.create({
@@ -359,24 +355,28 @@ describe("Module", () => {
         providers: [
           {
             token: USER_SERVICE,
-            useFactory: async (di: DiConfigurator) => {
+            useFactory: async (di: IDiContainer) => {
               const logger = await di.resolveRequired<ILogger>(LOGGER);
-              const authService = await di.resolveRequired<IAuthService>(AUTH_SERVICE);
+              const authService = await di.resolveRequired<IAuthService>(
+                AUTH_SERVICE
+              );
               return new UserServiceImpl(logger, authService);
             },
-            lifetime: "singleton"
-          }
-        ]
+            lifetime: "singleton",
+          },
+        ],
       });
 
       const AppModule = DiModule.create({
-        imports: [UserModule]
+        imports: [UserModule],
       });
 
       configurator.addModule(AppModule);
       const container = await configurator.build();
 
-      const userService = await container.resolveRequired<IUserService>(USER_SERVICE);
+      const userService = await container.resolveRequired<IUserService>(
+        USER_SERVICE
+      );
       const currentUser = userService.getCurrentUser();
 
       assert.equal(currentUser, "John Doe");

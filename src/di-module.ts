@@ -1,4 +1,3 @@
-import { DiConfigurator } from "./di-configurator";
 import {
   IDiConfigurator,
   IDiModule,
@@ -6,6 +5,7 @@ import {
   IModuleOptions,
   TServiceToken,
   ISingletonOptions,
+  IDiContainer,
 } from "./types";
 
 export class DiModule implements IDiModule {
@@ -32,7 +32,7 @@ export class DiModule implements IDiModule {
   private registerProvider(
     provider: {
       token: TServiceToken;
-      useFactory: (container: DiConfigurator) => Promise<any> | any;
+      useFactory: (container: IDiContainer) => Promise<any> | any;
       lifetime: TLifetime;
       singletonOptions?: ISingletonOptions;
       tag?: string;
@@ -53,7 +53,7 @@ export class DiModule implements IDiModule {
 
   private registerByLifetime(
     token: TServiceToken,
-    factory: (container: DiConfigurator) => Promise<any> | any,
+    factory: (container: IDiContainer) => Promise<any> | any,
     lifetime: TLifetime,
     configurator: IDiConfigurator,
     singletonOptions?: ISingletonOptions,

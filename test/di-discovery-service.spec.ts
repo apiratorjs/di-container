@@ -4,6 +4,7 @@ import { DiDiscoveryService } from "../src/di-discovery-service";
 import { IServiceRegistration, TLifetime, IDiConfigurator } from "../src/types";
 import { DiConfigurator } from "../src/di-configurator";
 import { ServiceRegistration } from "../src/service-registration";
+import { DiContainer } from "../src";
 
 describe("DiDiscoveryService", () => {
   let discoveryService: DiDiscoveryService;
@@ -320,6 +321,7 @@ describe("DiDiscoveryService", () => {
   describe("Integration Tests with DiConfigurator", () => {
     let diConfigurator: DiConfigurator;
     let discoveryService: DiDiscoveryService;
+    let diContainer: DiContainer;
 
     // Test service classes
     class DatabaseService {
@@ -351,13 +353,14 @@ describe("DiDiscoveryService", () => {
     const LOGGER_TOKEN = LoggerService;
     const CACHE_TOKEN = "CACHE_SERVICE";
 
-    beforeEach(() => {
+    beforeEach(async () => {
       diConfigurator = new DiConfigurator();
+      diContainer = await diConfigurator.build();
       discoveryService = diConfigurator.getDiscoveryService();
     });
 
     afterEach(async () => {
-      await diConfigurator.dispose();
+      await diContainer.dispose();
     });
 
     describe("Singleton Service Discovery", () => {

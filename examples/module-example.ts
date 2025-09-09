@@ -1,4 +1,4 @@
-import { DiConfigurator, DiModule } from "../src";
+import { DiConfigurator, DiModule, IDiContainer } from "../src";
 
 interface ILogger {
   log(message: string): void;
@@ -46,9 +46,9 @@ const LoggingModule = DiModule.create({
     {
       token: LOGGER,
       useFactory: () => new ConsoleLogger(),
-      lifetime: "singleton"
-    }
-  ]
+      lifetime: "singleton",
+    },
+  ],
 });
 
 const AuthModule = DiModule.create({
@@ -56,13 +56,13 @@ const AuthModule = DiModule.create({
   providers: [
     {
       token: AUTH_SERVICE,
-      useFactory: async (cfg: DiConfigurator) => {
-        const logger = await cfg.resolveRequired<ILogger>(LOGGER);
+      useFactory: async (container: IDiContainer) => {
+        const logger = await container.resolveRequired<ILogger>(LOGGER);
         return new AuthServiceImpl(logger);
       },
-      lifetime: "singleton"
-    }
-  ]
+      lifetime: "singleton",
+    },
+  ],
 });
 
 const UserModule = DiModule.create({
@@ -70,21 +70,23 @@ const UserModule = DiModule.create({
   providers: [
     {
       token: USER_SERVICE,
-      useFactory: async (cfg: DiConfigurator) => {
-        const logger = await cfg.resolveRequired<ILogger>(LOGGER);
-        const authService = await cfg.resolveRequired<IAuthService>(AUTH_SERVICE);
+      useFactory: async (container: IDiContainer) => {
+        const logger = await container.resolveRequired<ILogger>(LOGGER);
+        const authService = await container.resolveRequired<IAuthService>(
+          AUTH_SERVICE
+        );
         return new UserServiceImpl(logger, authService);
       },
-      lifetime: "singleton"
-    }
-  ]
+      lifetime: "singleton",
+    },
+  ],
 });
 
 const AppModule = DiModule.create({
   imports: [UserModule],
   providers: [
     // We can add additional app-specific services here
-  ]
+  ],
 });
 
 async function main() {
@@ -94,7 +96,9 @@ async function main() {
 
   const container = await configurator.build();
 
-  const userService = await container.resolveRequired<IUserService>(USER_SERVICE);
+  const userService = await container.resolveRequired<IUserService>(
+    USER_SERVICE
+  );
   const currentUser = userService.getCurrentUser();
   console.log(`Current user: ${currentUser}`);
 
