@@ -218,14 +218,22 @@ export class DiConfigurator implements IDiConfigurator {
       try {
         this.addToResolutionChain(token);
 
-        return (
-          (await this.getSingletonAll<T>(token)) ??
-          (await this.getScopedAll<T>(token)) ??
-          (await this.getTransientAll<T>(token)) ??
-          (function (): never {
-            throw new UnregisteredDependencyError(token);
-          })()
-        );
+        const singletonServices = await this.getSingletonAll<T>(token);
+        if (singletonServices.length > 0) {
+          return singletonServices;
+        }
+
+        const scopedServices = await this.getScopedAll<T>(token);
+        if (scopedServices.length > 0) {
+          return scopedServices;
+        }
+
+        const transientServices = await this.getTransientAll<T>(token);
+        if (transientServices.length > 0) {
+          return transientServices;
+        }
+
+        throw new UnregisteredDependencyError(token);
       } finally {
         this.removeFromResolutionChain(token);
       }
@@ -326,7 +334,7 @@ export class DiConfigurator implements IDiConfigurator {
     tag?: string
   ): Promise<T | undefined> {
     const serviceRegistrationList = this._singletonServiceRegistry.get(token);
-    if (!serviceRegistrationList) {
+    if (!serviceRegistrationList?.length) {
       return;
     }
 
@@ -365,7 +373,7 @@ export class DiConfigurator implements IDiConfigurator {
 
   private async getSingletonAll<T>(token: TServiceToken): Promise<T[]> {
     const serviceRegistrationList = this._singletonServiceRegistry.get(token);
-    if (!serviceRegistrationList) {
+    if (!serviceRegistrationList?.length) {
       return [];
     }
 
@@ -374,20 +382,20 @@ export class DiConfigurator implements IDiConfigurator {
     for (const serviceRegistration of serviceRegistrationList) {
       if (serviceRegistration.isResolved) {
         services.push(serviceRegistration.getInstance());
+      } else {
+        if (!serviceRegistration.factory) {
+          continue;
+        }
+
+        const serviceInstance = await serviceRegistration.factory(this);
+        if ((serviceInstance as IOnConstruct)?.onConstruct) {
+          await (serviceInstance as IOnConstruct).onConstruct();
+        }
+
+        serviceRegistration.setInstance(serviceInstance);
+
+        services.push(serviceInstance);
       }
-
-      if (!serviceRegistration.factory) {
-        continue;
-      }
-
-      const serviceInstance = await serviceRegistration.factory(this);
-      if ((serviceInstance as IOnConstruct)?.onConstruct) {
-        await (serviceInstance as IOnConstruct).onConstruct();
-      }
-
-      serviceRegistration.setInstance(serviceInstance);
-
-      services.push(serviceInstance);
     }
 
     return services;
@@ -399,7 +407,7 @@ export class DiConfigurator implements IDiConfigurator {
   ): Promise<T | undefined> {
     const serviceRegistrationList =
       this._requestScopeServiceRegistry.get(token);
-    if (!serviceRegistrationList) {
+    if (!serviceRegistrationList?.length) {
       return;
     }
 
@@ -442,7 +450,39 @@ export class DiConfigurator implements IDiConfigurator {
   }
 
   private async getScopedAll<T>(token: TServiceToken): Promise<T[]> {
-    throw new Error("Method not implemented.");
+    const serviceRegistrationList =
+      this._requestScopeServiceRegistry.get(token);
+    if (!serviceRegistrationList?.length) {
+      return [];
+    }
+
+    const store = this.getRequestScopeContext();
+    if (!store) {
+      throw new RequestScopeResolutionError(token);
+    }
+
+    const services: T[] = [];
+
+    for (const serviceRegistration of serviceRegistrationList) {
+      if (serviceRegistration.isResolved) {
+        services.push(serviceRegistration.getInstance());
+      } else {
+        if (!serviceRegistration.factory) {
+          continue;
+        }
+
+        const serviceInstance = await serviceRegistration.factory(this);
+        if ((serviceInstance as IOnConstruct)?.onConstruct) {
+          await (serviceInstance as IOnConstruct).onConstruct();
+        }
+
+        serviceRegistration.setInstance(serviceInstance);
+
+        services.push(serviceInstance);
+      }
+    }
+
+    return services;
   }
 
   private async tryGetTransient<T>(
@@ -450,7 +490,7 @@ export class DiConfigurator implements IDiConfigurator {
     tag?: string
   ): Promise<T | undefined> {
     const serviceRegistrationList = this._transientServiceRegistry.get(token);
-    if (!serviceRegistrationList) {
+    if (!serviceRegistrationList?.length) {
       return;
     }
 
@@ -479,7 +519,7 @@ export class DiConfigurator implements IDiConfigurator {
 
   private async getTransientAll<T>(token: TServiceToken): Promise<T[]> {
     const serviceRegistrationList = this._transientServiceRegistry.get(token);
-    if (!serviceRegistrationList) {
+    if (!serviceRegistrationList?.length) {
       return [];
     }
 

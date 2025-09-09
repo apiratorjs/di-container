@@ -47,995 +47,370 @@ yarn add @apiratorjs/di-container
 
 ## Usage
 
-### Basic Setup
+### Quick Start
 
-Create and configure your DI container using the DiConfigurator, then build a DiContainer for runtime service
-resolution.
-
-Any service is registered with a factory function that returns a promise of the service instance. Tokens are used to
-identify services.
-Tokens can be strings, symbols, or classes.
+Create and configure your DI container with the DiConfigurator, then build a DiContainer for runtime usage:
 
 ```typescript
 import { DiConfigurator } from "@apiratorjs/di-container";
 import { AsyncContextStore } from "@apiratorjs/async-context";
 
-// Create a configurator instance.
-const diConfigurator = new DiConfigurator();
-
-// Register a singleton service (default: lazy initialization, created only when requested).
-diConfigurator.addSingleton("MY_SINGLETON", async () => {
-  return new MySingletonService();
-});
-
-// Register a singleton service with eager initialization (created during container build).
-diConfigurator.addSingleton("MY_EAGER_SINGLETON", async () => {
-  return new MySingletonService();
-}, { eager: true });
-
-// Register a request-scoped service.
-diConfigurator.addScoped("MY_SCOPED", async () => {
-  return new MyScopedService();
-});
-
-// Register a transient service.
-diConfigurator.addTransient("MY_TRANSIENT", async () => {
-  return new MyTransientService();
-});
-
-// Build the container.
-const diContainer = diConfigurator.build();
-```
-
-### Resolving Services
-
-You can resolve services directly via the configurator or through the built container:
-
-```typescript
-// Resolve a singleton service.
-const singletonInstance = await diConfigurator.resolve("MY_SINGLETON");
-
-// Resolve a transient service.
-const transientInstance = await diConfigurator.resolve("MY_TRANSIENT");
-```
-
-### Using Request Scopes
-
-For services registered as scoped, you must resolve them within a request scope:
-
-```typescript
-import { AsyncContextStore } from "@apiratorjs/async-context";
-
-await diContainer.runWithNewRequestScope(new AsyncContextStore(), async () => {
-  const scopedInstance = await diContainer.resolve("MY_SCOPED");
-  console.log(scopedInstance);
-});
-```
-
-> [!WARNING]
-> You cannot resolve a request-scoped service outside of a request scope.
-
-### Lifecycle Hooks
-
-If a service implements the optional lifecycle hooks (onConstruct and/or onDispose), they are invoked automatically when
-the service is created and disposed.
-
-```typescript
-diConfigurator.addSingleton("HOOKED_SINGLETON", async () => {
-  return {
-    async onConstruct() {
-      console.log("Service constructed!");
-    },
-    async onDispose() {
-      console.log("Service disposed!");
-    }
-  };
-});
-```
-
-When the service is resolved for the first time, onConstruct() is called; later, when the container disposes of the
-service, onDispose() is invoked.
-
-### Service Tags
-
-Service tags allow you to register multiple implementations of the same service token, enabling flexible service resolution based on context. This is useful for scenarios like feature flags, environment-specific implementations, or multi-tenant applications.
-
-```typescript
-// Register multiple implementations of the same service with different tags
-diConfigurator.addSingleton("DATABASE_CONNECTION", async () => {
-  return new PostgreSQLConnection();
-}, undefined, "postgresql");
-
-diConfigurator.addSingleton("DATABASE_CONNECTION", async () => {
-  return new MySQLConnection();
-}, undefined, "mysql");
-
-diConfigurator.addSingleton("DATABASE_CONNECTION", async () => {
-  return new InMemoryConnection();
-}, undefined, "inmemory");
-
-// Resolve specific implementations using tags
-const postgresConnection = await diConfigurator.resolve("DATABASE_CONNECTION", "postgresql");
-const mysqlConnection = await diConfigurator.resolve("DATABASE_CONNECTION", "mysql");
-const inMemoryConnection = await diConfigurator.resolve("DATABASE_CONNECTION", "inmemory");
-```
-
-Tags work with all service lifecycles:
-
-```typescript
-// Singleton with tags
-diConfigurator.addSingleton("LOGGER", async () => new ConsoleLogger(), undefined, "console");
-diConfigurator.addSingleton("LOGGER", async () => new FileLogger(), undefined, "file");
-
-// Scoped with tags
-diConfigurator.addScoped("USER_CONTEXT", async () => new AdminContext(), "admin");
-diConfigurator.addScoped("USER_CONTEXT", async () => new GuestContext(), "guest");
-
-// Transient with tags
-diConfigurator.addTransient("NOTIFICATION", async () => new EmailNotification(), "email");
-diConfigurator.addTransient("NOTIFICATION", async () => new SMSNotification(), "sms");
-```
-
-If no tag is specified during resolution, the service registered with the "default" tag (or no tag) will be returned.
-
-### Service Registration Behavior
-
-When registering multiple services with the same token and tag, the **first** registration wins and subsequent registrations are ignored:
-
-```typescript
-// This implementation will be used
-diConfigurator.addSingleton("MY_SERVICE", async () => {
-  return new FirstImplementation();
-});
-
-// This registration will be ignored (same token, same default tag)
-diConfigurator.addSingleton("MY_SERVICE", async () => {
-  return new SecondImplementation();
-});
-
-// This works the same way for all service types (singleton, scoped, transient)
-```
-
-To register multiple implementations of the same service, use different tags:
-
-```typescript
-// Both implementations will be registered with different tags
-diConfigurator.addSingleton("MY_SERVICE", async () => {
-  return new FirstImplementation();
-}, undefined, "first");
-
-diConfigurator.addSingleton("MY_SERVICE", async () => {
-  return new SecondImplementation();
-}, undefined, "second");
-
-// Resolve specific implementations
-const firstImpl = await diConfigurator.resolve("MY_SERVICE", "first");
-const secondImpl = await diConfigurator.resolve("MY_SERVICE", "second");
-```
-
-This behavior ensures that accidental duplicate registrations don't silently override existing services, while still allowing multiple implementations through the tagging system.
-
-### Service Discovery
-
-The DI container includes a built-in discovery service that allows you to introspect and query registered services. This is particularly useful for debugging, monitoring, testing, and building dynamic service resolution logic.
-
-#### Accessing the Discovery Service
-
-You can access the discovery service through both the DiConfigurator and the built DiContainer:
-
-```typescript
-import { DiConfigurator } from "@apiratorjs/di-container";
-
-const diConfigurator = new DiConfigurator();
-
-// Register some services
-diConfigurator.addSingleton("DATABASE", () => new DatabaseService(), undefined, "infrastructure");
-diConfigurator.addScoped("USER_SERVICE", () => new UserService(), "business");
-diConfigurator.addTransient("LOGGER", () => new LoggerService(), "utility");
-
-// Access discovery service from configurator
-const discoveryService = diConfigurator.getDiscoveryService();
-
-// Or from the built container
-const container = diConfigurator.build();
-const containerDiscoveryService = container.getDiscoveryService();
-```
-
-#### Discovery Methods
-
-The discovery service provides several methods to query registered services:
-
-**Get All Services:**
-```typescript
-// Get all registered services
-const allServices = discoveryService.getAll({});
-console.log(`Total services registered: ${allServices.length}`);
-
-// Each service registration contains:
-// - token: The service token (string, symbol, or class)
-// - tokenType: "string" | "symbol" | "class"
-// - lifetime: "singleton" | "scoped" | "transient"
-// - tag: The service tag
-// - isResolved: Whether the service has been instantiated
-// - singletonOptions: Options for singleton services (e.g., eager initialization)
-```
-
-**Query by Service Token:**
-```typescript
-// Find services by their token
-const databaseServices = discoveryService.getServicesByServiceToken("DATABASE");
-const symbolServices = discoveryService.getServicesByServiceToken(MySymbolToken);
-const classServices = discoveryService.getServicesByServiceToken(MyServiceClass);
-```
-
-**Query by Lifetime:**
-```typescript
-// Find all singleton services
-const singletonServices = discoveryService.getServicesByLifetime("singleton");
-
-// Find all scoped services
-const scopedServices = discoveryService.getServicesByLifetime("scoped");
-
-// Find all transient services
-const transientServices = discoveryService.getServicesByLifetime("transient");
-```
-
-**Query by Tag:**
-```typescript
-// Find services by tag
-const infrastructureServices = discoveryService.getServicesByTag("infrastructure");
-const businessServices = discoveryService.getServicesByTag("business");
-const utilityServices = discoveryService.getServicesByTag("utility");
-```
-
-#### Practical Use Cases
-
-**Service Health Monitoring:**
-```typescript
-// Check which services are eagerly initialized
-const eagerSingletons = discoveryService
-  .getServicesByLifetime("singleton")
-  .filter(service => service.singletonOptions?.eager === true);
-
-console.log("Eager singletons:", eagerSingletons.map(s => s.token));
-```
-
-**Testing and Debugging:**
-```typescript
-// Verify all expected services are registered
-const expectedServices = ["DATABASE", "USER_SERVICE", "LOGGER"];
-const registeredTokens = discoveryService.getAll({}).map(s => s.token);
-
-expectedServices.forEach(token => {
-  if (!registeredTokens.includes(token)) {
-    console.warn(`Missing service: ${token}`);
-  }
-});
-```
-
-**Dynamic Service Resolution:**
-```typescript
-// Get all services with a specific tag for batch processing
-const infrastructureServices = discoveryService.getServicesByTag("infrastructure");
-
-for (const serviceReg of infrastructureServices) {
-  if (serviceReg.lifetime === "singleton") {
-    const instance = await container.resolve(serviceReg.token);
-    console.log(`Initialized infrastructure service: ${serviceReg.token}`);
-  }
-}
-```
-
-**Service Documentation Generation:**
-```typescript
-// Generate service inventory
-const serviceInventory = discoveryService.getAll({}).map(service => ({
-  token: service.token.toString(),
-  type: service.tokenType,
-  lifetime: service.lifetime,
-  tag: service.tag,
-  eager: service.singletonOptions?.eager || false
-}));
-
-console.table(serviceInventory);
-```
-
-### Circular Dependency Detection
-
-The container automatically detects circular dependencies during service resolution and throws a `CircularDependencyError` with detailed information about the dependency chain:
-
-```typescript
-// This would create a circular dependency
-diConfigurator.addSingleton("ServiceA", async (di) => {
-  await di.resolve("ServiceB");
-  return new ServiceA();
-});
-
-diConfigurator.addSingleton("ServiceB", async (di) => {
-  await di.resolve("ServiceA");
-  return new ServiceB();
-});
-
-// This will throw CircularDependencyError
-try {
-  await diConfigurator.resolve("ServiceA");
-} catch (error) {
-  if (error instanceof CircularDependencyError) {
-    // error.chain contains the full dependency chain: ["ServiceA", "ServiceB", "ServiceA"]
-    console.error(`Circular dependency detected: ${error.chain.join(" -> ")}`);
-  }
-}
-```
-
-The error provides a complete dependency chain for debugging purposes, making it easier to identify and fix circular dependencies in your application.
-
-### Basic Example
-
-```typescript
-import { DiConfigurator } from "../src";
-import { IOnConstruct, IOnDispose } from "../src/types";
-import { AsyncContextStore } from "@apiratorjs/async-context";
-
-class User {
-  public constructor(
-    public readonly email: string,
-    public readonly age: number
-  ) {}
-}
-
-class Config {
-  public dbProvider = "in_memory";
-}
-
-// Emulate a db storage
-const users: User[] = [];
-
-class DBContext implements IOnConstruct, IOnDispose {
-  public constructor(private readonly _config: Config) {}
-
-  onDispose(): Promise<void> | void {
-    console.log("DBContext disposed");
-  }
-
-  onConstruct(): Promise<void> | void {
-    console.log("DBContext constructed. Provider: ", this._config.dbProvider);
-  }
-
-  findUserByEmail(email: string): User | undefined {
-    return users.find(user => user.email === email);
-  }
-
-  addUser(user: User): void {
-    users.push(user);
-  }
+// Service classes with lifecycle hooks
+class DatabaseService {
+  async onConstruct() { console.log("Database connected"); }
+  async onDispose() { console.log("Database disconnected"); }
+  
+  async query(sql: string) { return `Result for: ${sql}`; }
 }
 
 class UserService {
-  public constructor(private readonly _db: DBContext) {}
-
-  public getUserByEmail(email: string): User | undefined {
-    return this._db.findUserByEmail(email);
-  }
-
-  public addUser(user: User): void {
-    this._db.addUser(user);
-  }
-}
-
-const diConfigurator = new DiConfigurator();
-
-diConfigurator.addSingleton(Config, () => new Config());
-diConfigurator.addScoped(DBContext, async (cfg) => {
-  const config = await cfg.resolve(Config);
-  return new DBContext(config);
-});
-diConfigurator.addScoped(UserService, async (cfg) => {
-  const dbContext = await cfg.resolve(DBContext);
-  return new UserService(dbContext);
-});
-
-const diContainer = diConfigurator.build();
-
-(async () => {
-  // To use request-scoped services, you need to create a new scope
-  await diContainer.runWithNewRequestScope(new AsyncContextStore(), async () => {
-    const userService = await diContainer.resolve(UserService);
-
-    userService.addUser(new User("john@doe.com", 30));
-  });
-
-  const user = await diContainer.runWithNewRequestScope(new AsyncContextStore(), async () => {
-    const userService = await diContainer.resolve(UserService);
-
-    return userService.getUserByEmail("john@doe.com");
-  });
-
-  console.log("User: ", user);
-})();
-
-/**
- * Output:
- *
- * DBContext constructed. Provider:  in_memory
- * DBContext disposed
- * DBContext constructed. Provider:  in_memory
- * DBContext disposed
- * User:  User { email: 'john@doe.com', age: 30 }
- */
-```
-
-### Service Discovery Example
-
-Here's a comprehensive example demonstrating the discovery service capabilities:
-
-```typescript
-import { DiConfigurator } from "@apiratorjs/di-container";
-
-// Define service classes
-class DatabaseService {
-  public readonly name = "DatabaseService";
-  public connect() { return "connected"; }
-}
-
-class CacheService {
-  public readonly name = "CacheService";
-  public get(key: string) { return `cached_${key}`; }
-}
-
-class LoggerService {
-  public readonly name = "LoggerService";
-  public log(message: string) { console.log(`[LOG] ${message}`); }
-}
-
-class ApiService {
-  constructor(
-    private readonly db: DatabaseService,
-    private readonly cache: CacheService,
-    private readonly logger: LoggerService
-  ) {}
+  constructor(private db: DatabaseService) {}
   
-  public getData() {
-    this.logger.log("Getting data from API");
-    return "API data";
+  async getUser(id: string) {
+    return await this.db.query(`SELECT * FROM users WHERE id = ${id}`);
   }
 }
 
-// Service tokens
-const DATABASE_TOKEN = Symbol("DATABASE");
-const CACHE_TOKEN = "CACHE_SERVICE";
-const LOGGER_TOKEN = LoggerService;
-const API_TOKEN = "API_SERVICE";
+// Configure services with different lifecycles and options
+const configurator = new DiConfigurator();
 
-const diConfigurator = new DiConfigurator();
+// Singleton with eager initialization
+configurator.addSingleton("DATABASE", () => new DatabaseService(), { eager: true });
 
-// Register services with different lifetimes and tags
-diConfigurator.addSingleton(DATABASE_TOKEN, () => new DatabaseService(), { eager: true }, "infrastructure");
-diConfigurator.addSingleton(CACHE_TOKEN, () => new CacheService(), undefined, "infrastructure");
-diConfigurator.addSingleton(LOGGER_TOKEN, () => new LoggerService(), undefined, "utility");
-
-diConfigurator.addScoped(API_TOKEN, async (container) => {
-  const db = await container.resolve(DATABASE_TOKEN);
-  const cache = await container.resolve(CACHE_TOKEN);
-  const logger = await container.resolve(LOGGER_TOKEN);
-  return new ApiService(db, cache, logger);
-}, "business");
-
-// Multiple implementations with tags
-diConfigurator.addTransient("NOTIFICATION", () => ({ send: (msg: string) => console.log(`Email: ${msg}`) }), "email");
-diConfigurator.addTransient("NOTIFICATION", () => ({ send: (msg: string) => console.log(`SMS: ${msg}`) }), "sms");
-
-// Get discovery service
-const discoveryService = diConfigurator.getDiscoveryService();
-
-// Discovery examples
-console.log("=== Service Discovery Examples ===\n");
-
-// 1. Get all services
-const allServices = discoveryService.getAll({});
-console.log(`Total registered services: ${allServices.length}\n`);
-
-// 2. Query by lifetime
-const singletonServices = discoveryService.getServicesByLifetime("singleton");
-console.log("Singleton services:");
-singletonServices.forEach(service => {
-  const eager = service.singletonOptions?.eager ? " (eager)" : " (lazy)";
-  console.log(`  - ${service.token.toString()}${eager} [${service.tag}]`);
+// Scoped service with dependency injection
+configurator.addScoped("USER_SERVICE", async (cfg) => {
+  const db = await cfg.resolve("DATABASE");
+  return new UserService(db);
 });
 
-const scopedServices = discoveryService.getServicesByLifetime("scoped");
-console.log(`\nScoped services: ${scopedServices.length}`);
-scopedServices.forEach(service => {
-  console.log(`  - ${service.token} [${service.tag}]`);
+// Transient service
+configurator.addTransient("LOGGER", () => ({ log: (msg) => console.log(`[LOG] ${msg}`) }));
+
+// Build container (eagerly initializes singletons)
+const container = await configurator.build();
+
+// Use services - scoped services REQUIRE a request scope
+await container.runWithNewRequestScope(new AsyncContextStore(), async () => {
+  const userService = await container.resolve("USER_SERVICE"); // ✅ Works in scope
+  const logger = await container.resolve("LOGGER");
+  
+  const user = await userService.getUser("123");
+  logger.log(`Retrieved user: ${user}`);
 });
 
-const transientServices = discoveryService.getServicesByLifetime("transient");
-console.log(`\nTransient services: ${transientServices.length}`);
-transientServices.forEach(service => {
-  console.log(`  - ${service.token} [${service.tag}]`);
-});
+// ❌ This would throw RequestScopeResolutionError:
+// await container.resolve("USER_SERVICE"); // Error: scoped service outside scope
 
-// 3. Query by tag
-console.log("\n=== Services by Tag ===");
-const infrastructureServices = discoveryService.getServicesByTag("infrastructure");
-console.log(`Infrastructure services: ${infrastructureServices.length}`);
-infrastructureServices.forEach(service => {
-  console.log(`  - ${service.token.toString()} (${service.lifetime})`);
-});
-
-const businessServices = discoveryService.getServicesByTag("business");
-console.log(`\nBusiness services: ${businessServices.length}`);
-businessServices.forEach(service => {
-  console.log(`  - ${service.token} (${service.lifetime})`);
-});
-
-// 4. Query by token
-console.log("\n=== Query by Token ===");
-const databaseService = discoveryService.getServicesByServiceToken(DATABASE_TOKEN);
-console.log(`Database service registrations: ${databaseService.length}`);
-if (databaseService.length > 0) {
-  const service = databaseService[0];
-  console.log(`  Token type: ${service.tokenType}`);
-  console.log(`  Lifetime: ${service.lifetime}`);
-  console.log(`  Tag: ${service.tag}`);
-  console.log(`  Eager: ${service.singletonOptions?.eager || false}`);
-}
-
-// 5. Find services with multiple implementations
-const notificationServices = discoveryService.getServicesByServiceToken("NOTIFICATION");
-console.log(`\nNotification implementations: ${notificationServices.length}`);
-notificationServices.forEach(service => {
-  console.log(`  - Tag: ${service.tag}, Lifetime: ${service.lifetime}`);
-});
-
-// 6. Service health check
-console.log("\n=== Service Health Check ===");
-const eagerServices = discoveryService
-  .getServicesByLifetime("singleton")
-  .filter(service => service.singletonOptions?.eager === true);
-
-console.log(`Eager singletons (${eagerServices.length}):`);
-eagerServices.forEach(service => {
-  console.log(`  - ${service.token.toString()}`);
-});
-
-// 7. Generate service inventory
-console.log("\n=== Service Inventory ===");
-const inventory = discoveryService.getAll({}).map(service => ({
-  Token: service.token.toString(),
-  Type: service.tokenType,
-  Lifetime: service.lifetime,
-  Tag: service.tag,
-  Eager: service.singletonOptions?.eager || false
-}));
-
-console.table(inventory);
-
-/**
- * Expected Output:
- * 
- * === Service Discovery Examples ===
- * 
- * Total registered services: 6
- * 
- * Singleton services:
- *   - Symbol(DATABASE) (eager) [infrastructure]
- *   - CACHE_SERVICE (lazy) [infrastructure]
- *   - class LoggerService (lazy) [utility]
- * 
- * Scoped services: 1
- *   - API_SERVICE [business]
- * 
- * Transient services: 2
- *   - NOTIFICATION [email]
- *   - NOTIFICATION [sms]
- * 
- * === Services by Tag ===
- * Infrastructure services: 2
- *   - Symbol(DATABASE) (singleton)
- *   - CACHE_SERVICE (singleton)
- * 
- * Business services: 1
- *   - API_SERVICE (scoped)
- * 
- * === Query by Token ===
- * Database service registrations: 1
- *   Token type: symbol
- *   Lifetime: singleton
- *   Tag: infrastructure
- *   Eager: true
- * 
- * Notification implementations: 2
- *   - Tag: email, Lifetime: transient
- *   - Tag: sms, Lifetime: transient
- * 
- * === Service Health Check ===
- * Eager singletons (1):
- *   - Symbol(DATABASE)
- * 
- * === Service Inventory ===
- * ┌─────────┬──────────────────────┬──────────┬──────────────┬──────────────────┬───────┐
- * │ (index) │        Token         │   Type   │   Lifetime   │       Tag        │ Eager │
- * ├─────────┼──────────────────────┼──────────┼──────────────┼──────────────────┼───────┤
- * │    0    │   'Symbol(DATABASE)' │ 'symbol' │ 'singleton'  │ 'infrastructure' │ true  │
- * │    1    │   'CACHE_SERVICE'    │ 'string' │ 'singleton'  │ 'infrastructure' │ false │
- * │    2    │ 'class LoggerService'│ 'class'  │ 'singleton'  │    'utility'     │ false │
- * │    3    │    'API_SERVICE'     │ 'string' │   'scoped'   │    'business'    │ false │
- * │    4    │   'NOTIFICATION'     │ 'string' │ 'transient'  │     'email'      │ false │
- * │    5    │   'NOTIFICATION'     │ 'string' │ 'transient'  │      'sms'       │ false │
- * └─────────┴──────────────────────┴──────────┴──────────────┴──────────────────┴───────┘
- */
+// Cleanup when done
+await container.dispose();
 ```
 
-## Dependency Injection Modules
+### Core Concepts
 
-The DI container supports organizing your dependencies into logical modules, making it easier to manage complex applications with many services. Modules provide a way to group related services together and can be reused across different parts of your application.
+**Service Lifecycles:**
+- **Singleton**: One instance per application (lazy by default, can be eager)
+- **Scoped**: One instance per request scope - **MUST** be used within `runWithNewRequestScope()`, throws `RequestScopeResolutionError` otherwise
+- **Transient**: New instance on every resolution
 
-### Creating a Module
+**Important:** Scoped services cannot be resolved outside a request scope:
+```typescript
+// ✅ Correct usage
+await container.runWithNewRequestScope(new AsyncContextStore(), async () => {
+  const scopedService = await container.resolve("SCOPED_SERVICE"); // Works
+});
 
-A module is a class or object that defines a set of related services:
+// ❌ This throws RequestScopeResolutionError
+const scopedService = await container.resolve("SCOPED_SERVICE"); // Error!
+```
+
+**Service Tags (Optional):** Register multiple implementations when needed:
+```typescript
+configurator.addSingleton("PAYMENT", () => new StripePayment(), undefined, "stripe");
+configurator.addSingleton("PAYMENT", () => new PayPalPayment(), undefined, "paypal");
+```
+
+**Lifecycle Hooks:** Services can implement `onConstruct()` and `onDispose()` for automatic initialization and cleanup.
+
+## IDiConfigurator Interface
+
+The `IDiConfigurator` is the main interface for configuring dependency injection services. Here are all available methods:
+
+### Service Registration Methods
+
+| Method | Description | Example |
+|--------|-------------|---------|
+| `addSingleton<T>(token, factory, options?, tag?)` | Register a singleton service | `configurator.addSingleton("DB", () => new Database(), { eager: true })` |
+| `addScoped<T>(token, factory, tag?)` | Register a request-scoped service | `configurator.addScoped("USER_CTX", async (cfg) => new UserContext())` |
+| `addTransient<T>(token, factory, tag?)` | Register a transient service | `configurator.addTransient("LOGGER", () => new Logger(), "console")` |
+| `addModule(module)` | Register a module with multiple services | `configurator.addModule(new DatabaseModule())` |
+
+### Service Resolution Methods
+
+| Method | Description | Returns |
+|--------|-------------|---------|
+| `resolve<T>(token, tag?)` | Resolve a service (optional) | `Promise<T \| undefined>` |
+| `resolveRequired<T>(token)` | Resolve a service (throws if not found) | `Promise<T>` |
+| `resolveAll<T>(token)` | Resolve all implementations | `Promise<T[]>` |
+| `resolveTagged<T>(tag)` | Resolve first service with tag | `Promise<T \| undefined>` |
+| `resolveTaggedRequired<T>(tag)` | Resolve service with tag (throws if not found) | `Promise<T>` |
+| `resolveAllTagged<T>(tag)` | Resolve all services with tag | `Promise<T[]>` |
+
+### Container Management Methods
+
+| Method | Description | Purpose |
+|--------|-------------|---------|
+| `build()` | Build the runtime container | Returns `DiContainer` for production use |
+| `dispose()` | Dispose all services | Cleanup singletons and scoped services |
+| `runWithNewRequestScope(store, callback)` | Execute code in request scope | Required for scoped services |
+| `getRequestScopeContext()` | Get current scope context | Returns `AsyncContextStore \| undefined` |
+| `isInRequestScopeContext()` | Check if in request scope | Returns `boolean` |
+| `getDiscoveryService()` | Get discovery service | For service introspection |
+
+### Practical Example
 
 ```typescript
-import { DiConfigurator } from "@apiratorjs/di-container";
-import { IDiModule } from "./types";
+const configurator = new DiConfigurator();
 
-// Define a module for database-related services
+// Registration - various lifecycles and features
+configurator
+  .addSingleton("CONFIG", () => ({ env: "prod" }), { eager: true })
+  .addScoped("REQUEST_ID", () => Math.random().toString(36))
+  .addTransient("LOGGER", () => new ConsoleLogger());
+
+// Resolution - different ways to get services
+const config = await configurator.resolveRequired("CONFIG"); // ✅ Singleton works anywhere
+const loggers = await configurator.resolveAll("LOGGER");
+
+// Container management
+const container = await configurator.build();
+
+// ❌ This would throw RequestScopeResolutionError:
+// const requestId = await container.resolve("REQUEST_ID"); // Error: scoped service outside scope
+
+// ✅ Correct usage for scoped services:
+await container.runWithNewRequestScope(new AsyncContextStore(), async () => {
+  const requestId = await container.resolve("REQUEST_ID"); // Works in scope
+  console.log(`Processing request: ${requestId}`);
+});
+
+await container.dispose();
+```
+
+### Service Discovery
+
+Query and introspect registered services for debugging, monitoring, and dynamic resolution. The discovery service returns `IServiceRegistration` objects with detailed information about each service.
+
+#### IServiceRegistration Interface
+
+Each service registration returned by the discovery service contains:
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `token` | `TServiceToken` | The service token (string, symbol, or class) |
+| `tokenType` | `"string" \| "symbol" \| "class"` | Type of the token |
+| `lifetime` | `"singleton" \| "scoped" \| "transient"` | Service lifetime |
+| `tag` | `string` | Service tag (defaults to "default") |
+| `isResolved` | `boolean` | Whether service instance has been created |
+| `singletonOptions` | `ISingletonOptions?` | Options for singleton services |
+| `metatype` | `TClassType?` | Class constructor if token is a class |
+
+#### Methods
+
+| Method | Description |
+|--------|-------------|
+| `getInstance()` | Get the current service instance (if resolved) |
+
+#### Discovery Example
+
+```typescript
+const configurator = new DiConfigurator();
+
+// Register services
+configurator.addSingleton("DATABASE", () => new DatabaseService(), { eager: true });
+configurator.addScoped("USER_SERVICE", () => new UserService());
+configurator.addTransient("LOGGER", () => new LoggerService());
+
+const discovery = configurator.getDiscoveryService();
+
+// Query by different criteria
+const allServices = discovery.getAll({});
+const singletons = discovery.getServicesByLifetime("singleton");
+const databaseServices = discovery.getServicesByServiceToken("DATABASE");
+
+// Work with service registrations
+const databaseReg = databaseServices[0];
+console.log(`Database service token: ${databaseReg.token}`);
+console.log(`Token type: ${databaseReg.tokenType}`);
+console.log(`Is eager: ${databaseReg.singletonOptions?.eager}`);
+console.log(`Is resolved: ${databaseReg.isResolved}`);
+
+// Health check for eager services
+const eagerServices = discovery.getServicesByLifetime("singleton")
+  .filter(s => s.singletonOptions?.eager)
+  .map(s => ({ token: s.token, resolved: s.isResolved }));
+console.log("Eager services status:", eagerServices);
+
+// Service inventory
+console.table(discovery.getAll({}).map(s => ({
+  Token: s.token.toString(),
+  Type: s.tokenType,
+  Lifetime: s.lifetime,
+  Tag: s.tag,
+  Resolved: s.isResolved,
+  Eager: s.singletonOptions?.eager || false
+})));
+```
+
+### Advanced Features
+
+**Circular Dependency Detection:** Automatic detection with detailed error chains:
+```typescript
+// This creates a circular dependency
+configurator.addSingleton("ServiceA", async (cfg) => {
+  await cfg.resolve("ServiceB"); // Will detect the cycle
+  return new ServiceA();
+});
+configurator.addSingleton("ServiceB", async (cfg) => {
+  await cfg.resolve("ServiceA");
+  return new ServiceB();
+});
+
+// Throws CircularDependencyError with chain: ["ServiceA", "ServiceB", "ServiceA"]
+```
+
+**Complete Application Example:**
+```typescript
+import { DiConfigurator, IOnConstruct, IOnDispose } from "@apiratorjs/di-container";
+import { AsyncContextStore } from "@apiratorjs/async-context";
+
+// Service classes
+class Config { 
+  public readonly dbUrl = "mongodb://localhost"; 
+}
+
+class Database implements IOnConstruct, IOnDispose {
+  constructor(private config: Config) {}
+  
+  async onConstruct() { console.log(`Connected to ${this.config.dbUrl}`); }
+  async onDispose() { console.log("Database disconnected"); }
+  
+  async findUser(email: string) { return { email, id: Math.random() }; }
+}
+
+class UserService {
+  constructor(private db: Database) {}
+  
+  async getUser(email: string) {
+    return await this.db.findUser(email);
+  }
+}
+
+const configurator = new DiConfigurator();
+
+configurator
+  .addSingleton("CONFIG", () => new Config(), { eager: true })
+  .addSingleton("DATABASE", async (cfg) => {
+    const config = await cfg.resolve("CONFIG");
+    return new Database(config);
+  })
+  .addScoped("USER_SERVICE", async (cfg) => {
+    const db = await cfg.resolve("DATABASE");
+    return new UserService(db);
+  });
+
+// Usage - scoped services MUST be used within request scope
+const container = await configurator.build();
+
+await container.runWithNewRequestScope(new AsyncContextStore(), async () => {
+  const userService = await container.resolve("USER_SERVICE"); // ✅ Works in scope
+  const user = await userService.getUser("user@example.com");
+  console.log("Found user:", user);
+});
+
+// ❌ This would throw RequestScopeResolutionError:
+// const userService = await container.resolve("USER_SERVICE"); // Error!
+
+await container.dispose(); // Cleanup
+```
+
+## Modules
+
+Organize related services into reusable modules for better code organization:
+
+### Class-based Modules
+
+```typescript
 class DatabaseModule implements IDiModule {
-  public register(configurator: DiConfigurator): void {
-    // Register database-related services
-    configurator.addSingleton("DATABASE_CONNECTION", async () => {
-      return new DatabaseConnection(/* connection params */);
-    });
-
-    configurator.addScoped("TRANSACTION_MANAGER", async (di) => {
-      const connection = await di.resolve("DATABASE_CONNECTION");
-      return new TransactionManager(connection);
-    });
-  }
-}
-
-// Define a module for user-related services
-class UserModule implements IDiModule {
-  public register(configurator: DiConfigurator): void {
-    // Register user-related services
-    configurator.addScoped("USER_REPOSITORY", async (di) => {
-      const transactionManager = await di.resolve("TRANSACTION_MANAGER");
-      return new UserRepository(transactionManager);
-    });
-
-    configurator.addScoped("USER_SERVICE", async (di) => {
-      const userRepository = await di.resolve("USER_REPOSITORY");
-      return new UserService(userRepository);
+  register(configurator: DiConfigurator): void {
+    configurator.addSingleton("DATABASE", () => new DatabaseConnection());
+    configurator.addScoped("TRANSACTION", async (cfg) => {
+      const db = await cfg.resolve("DATABASE");
+      return new TransactionManager(db);
     });
   }
 }
 ```
 
-### Using DiModule.create
-
-For a more declarative approach, you can use the `DiModule.create` static method to create modules with a configuration object:
+### Declarative Modules with DiModule.create
 
 ```typescript
-import { DiModule } from "@apiratorjs/di-container";
-
-// Define service tokens
-const DATABASE_CONNECTION = Symbol("DATABASE_CONNECTION");
-const EAGER_DATABASE_CONNECTION = Symbol("EAGER_DATABASE_CONNECTION");
-const TRANSACTION_MANAGER = Symbol("TRANSACTION_MANAGER");
-const USER_REPOSITORY = Symbol("USER_REPOSITORY");
-const USER_SERVICE = Symbol("USER_SERVICE");
-
-// Create a database module
-const DatabaseModule = DiModule.create({
-  providers: [
-    {
-      token: DATABASE_CONNECTION,
-      useFactory: async () => {
-        return new DatabaseConnection(/* connection params */);
-      },
-      lifetime: "singleton"
-      // By default, lazy initialization (created only when requested)
-    },
-    {
-      token: EAGER_DATABASE_CONNECTION,
-      useFactory: async () => {
-        return new DatabaseConnection(/* connection params */);
-      },
-      lifetime: "singleton",
-      singletonOptions: { eager: true } // Will be created during container build
-    },
-    {
-      token: TRANSACTION_MANAGER,
-      useFactory: async (di) => {
-        const connection = await di.resolve(DATABASE_CONNECTION);
-        return new TransactionManager(connection);
-      },
-      lifetime: "scoped"
-    }
-  ]
-});
-
-// Create a user module that imports the database module
-const UserModule = DiModule.create({
-  imports: [DatabaseModule], // Import other modules
-  providers: [
-    {
-      token: USER_REPOSITORY,
-      useFactory: async (di) => {
-        const txManager = await di.resolve(TRANSACTION_MANAGER);
-        return new UserRepository(txManager);
-      },
-      lifetime: "scoped"
-    },
-    {
-      token: USER_SERVICE,
-      useFactory: async (di) => {
-        const userRepo = await di.resolve(USER_REPOSITORY);
-        return new UserService(userRepo);
-      },
-      lifetime: "scoped"
-    }
-  ]
-});
-```
-
-The `DiModule.create` method accepts a `ModuleOptions` object with the following properties:
-
-- `imports`: An array of other modules to import
-- `providers`: An array of service provider configurations, each with:
-  - `token`: The service token (string, symbol, or class)
-  - `useFactory`: A factory function that creates the service
-  - `lifetime`: The service lifetime ("singleton", "scoped", or "transient")
-  - `singletonOptions`: Additional options for singleton services:
-    - `{ eager: true }` - When true, the singleton will be created during DI build step instead of lazy initialization
-  - `tag`: Optional tag to distinguish between multiple implementations of the same service token
-
-Here's an example showing how to use tags with DiModule.create:
-
-```typescript
-// Create a module with tagged services
+// Create modular service definitions
 const LoggingModule = DiModule.create({
   providers: [
-    {
-      token: "LOGGER",
-      useFactory: () => new ConsoleLogger(),
+    { token: "LOGGER", useFactory: () => new ConsoleLogger(), lifetime: "singleton" }
+  ]
+});
+
+const DataModule = DiModule.create({
+  imports: [LoggingModule],
+  providers: [
+    { 
+      token: "DATABASE", 
+      useFactory: () => new Database(), 
       lifetime: "singleton",
-      tag: "console"
+      singletonOptions: { eager: true }
     },
     {
-      token: "LOGGER",
-      useFactory: () => new FileLogger(),
-      lifetime: "singleton",
-      tag: "file"
-    },
-    {
-      token: "LOGGER",
-      useFactory: () => new DatabaseLogger(),
-      lifetime: "singleton",
-      singletonOptions: { eager: true },
-      tag: "database"
-    }
-  ]
-});
-```
-
-This declarative approach makes it easy to organize your services and their dependencies, and enables importing modules into other modules.
-
-### Using Modules
-
-You can register modules with your DiConfigurator using the `addModule` method:
-
-```typescript
-const diConfigurator = new DiConfigurator();
-
-// Register a custom module class
-const databaseModule = new DatabaseModule();
-diConfigurator.addModule(databaseModule);
-
-// Register a module created with DiModule.create
-const userModule = DiModule.create({
-  // module options
-});
-diConfigurator.addModule(userModule);
-
-// Build the container
-const diContainer = diConfigurator.build();
-```
-
-#### Organizing Modules
-
-For larger applications, you can organize your modules in a hierarchical structure:
-
-```typescript
-// Create the core modules
-const coreModule = DiModule.create({
-  providers: [/* core services */]
-});
-
-const dataModule = DiModule.create({
-  imports: [coreModule],
-  providers: [/* data services */]
-});
-
-// Create feature modules that depend on core and data modules
-const featureModule = DiModule.create({
-  imports: [coreModule, dataModule],
-  providers: [/* feature-specific services */]
-});
-
-// Create the root application module
-const appModule = DiModule.create({
-  imports: [
-    coreModule,
-    dataModule,
-    featureModule,
-    // other feature modules
-  ],
-  providers: [/* app-specific services */]
-});
-
-// Register only the root module
-const diConfigurator = new DiConfigurator();
-diConfigurator.addModule(appModule);
-```
-
-#### Module Registration Order
-
-When registering multiple modules, be aware that:
-
-1. Services are registered in the order modules are added
-2. When the same service token is registered multiple times, the last registration wins
-3. When using imports, the imported modules are registered before the importing module
-
-This allows for service overrides and customization at different levels of your module hierarchy.
-
-### Benefits of Using Modules
-
-1. **Organization**: Group related services together for better code organization.
-2. **Reusability**: Modules can be reused across different applications or parts of the same application.
-3. **Maintainability**: Easier to maintain and update services when they're organized into logical modules.
-4. **Separation of Concerns**: Each module can focus on a specific aspect of the application.
-5. **Testing**: Modules make it easier to mock dependencies for testing purposes.
-
-### Module Best Practices
-
-- Keep modules focused on a specific domain or functionality.
-- Avoid circular dependencies between modules.
-- Use descriptive names for tokens to clearly identify services within a module.
-- Document dependencies between modules to make the application structure clearer.
-
-### Complete Module Example
-
-Here's a comprehensive example that demonstrates how to use DiModule.create to organize a complete application with multiple modules and dependencies:
-
-```typescript
-import { DiConfigurator, DiModule } from "@apiratorjs/di-container";
-
-// Define interfaces
-interface ILogger {
-  log(message: string): void;
-}
-
-interface IAuthService {
-  isAuthenticated(): boolean;
-}
-
-interface IUserService {
-  getCurrentUser(): string;
-}
-
-// Implement services
-class ConsoleLogger implements ILogger {
-  log(message: string): void {
-    console.log(`[LOG] ${message}`);
-  }
-}
-
-class AuthServiceImpl implements IAuthService {
-  constructor(private logger: ILogger) {}
-
-  isAuthenticated(): boolean {
-    this.logger.log("Checking authentication");
-    return true;
-  }
-}
-
-class UserServiceImpl implements IUserService {
-  constructor(private logger: ILogger, private authService: IAuthService) {}
-
-  getCurrentUser(): string {
-    this.logger.log("Getting current user");
-    return this.authService.isAuthenticated() ? "John Doe" : "Guest";
-  }
-}
-
-// Define service tokens
-const LOGGER = Symbol("LOGGER");
-const AUTH_SERVICE = Symbol("AUTH_SERVICE");
-const USER_SERVICE = Symbol("USER_SERVICE");
-
-// Create modules
-const LoggingModule = DiModule.create({
-  providers: [
-    {
-      token: LOGGER,
-      useFactory: () => new ConsoleLogger(),
-      lifetime: "singleton"
-    }
-  ]
-});
-
-const AuthModule = DiModule.create({
-  imports: [LoggingModule], // Import logging module
-  providers: [
-    {
-      token: AUTH_SERVICE,
-      useFactory: async (cfg: DiConfigurator) => {
-        const logger = await cfg.resolve<ILogger>(LOGGER);
-        return new AuthServiceImpl(logger);
+      token: "USER_REPO",
+      useFactory: async (cfg) => {
+        const db = await cfg.resolve("DATABASE");
+        const logger = await cfg.resolve("LOGGER");
+        return new UserRepository(db, logger);
       },
-      lifetime: "singleton"
+      lifetime: "scoped"
     }
   ]
 });
 
-const UserModule = DiModule.create({
-  imports: [LoggingModule, AuthModule], // Import both modules
-  providers: [
-    {
-      token: USER_SERVICE,
-      useFactory: async (cfg: DiConfigurator) => {
-        const logger = await cfg.resolve<ILogger>(LOGGER);
-        const authService = await cfg.resolve<IAuthService>(AUTH_SERVICE);
-        return new UserServiceImpl(logger, authService);
-      },
-      lifetime: "singleton"
-    }
-  ]
-});
-
-// Create the application module that imports all other modules
 const AppModule = DiModule.create({
-  imports: [UserModule],
+  imports: [DataModule],
   providers: [
-    // You can add app-specific services here
+    {
+      token: "USER_SERVICE",
+      useFactory: async (cfg) => {
+        const repo = await cfg.resolve("USER_REPO");
+        return new UserService(repo);
+      },
+      lifetime: "scoped"
+    }
   ]
 });
 
-// Usage
-async function main() {
-  const configurator = new DiConfigurator();
-  
-  // Register the top-level module
-  configurator.addModule(AppModule);
-  
-  // Build the container
-  const container = configurator.build();
-  
-  // Resolve and use a service
-  const userService = await container.resolve<IUserService>(USER_SERVICE);
-  const currentUser = userService.getCurrentUser();
-  console.log(`Current user: ${currentUser}`);
-  
-  // Clean up
-  await container.dispose();
-}
+// Register and use - remember scoped services need request scope!
+const configurator = new DiConfigurator();
+configurator.addModule(AppModule);
+const container = await configurator.build();
 
-main().catch(console.error);
+await container.runWithNewRequestScope(new AsyncContextStore(), async () => {
+  const userService = await container.resolve("USER_SERVICE"); // ✅ Works in scope
+});
 ```
 
-Output:
-```
-[LOG] Checking authentication
-[LOG] Getting current user
-Current user: John Doe
-```
-
-This example demonstrates:
-- Creating multiple modules with different responsibilities
-- Importing modules into other modules to establish dependencies
-- Using symbols as service tokens for type safety
-- Resolving dependencies between services across different modules
-- Proper disposal of services when they're no longer needed
+**Module Features:**
+- **Imports**: Import other modules to establish dependencies
+- **Providers**: Define services with tokens, factories, lifecycles, and optional tags
+- **Hierarchical**: Create nested module structures
+- **Registration Order**: First registration wins for same token combinations
 
 ### Contributing
 
