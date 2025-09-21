@@ -9,21 +9,21 @@ import {
 } from "./types";
 
 export class DiModule implements IDiModule {
-  constructor(private readonly options: IModuleOptions) {}
+  constructor(private readonly _options: IModuleOptions) {}
 
   static create(options: IModuleOptions): DiModule {
     return new DiModule(options);
   }
 
   register(configurator: IDiConfigurator): void {
-    if (this.options.imports) {
-      for (const importedModule of this.options.imports) {
+    if (this._options.imports) {
+      for (const importedModule of this._options.imports) {
         configurator.addModule(importedModule);
       }
     }
 
-    if (this.options.providers) {
-      for (const provider of this.options.providers) {
+    if (this._options.providers) {
+      for (const provider of this._options.providers) {
         this.registerProvider(provider, configurator);
       }
     }

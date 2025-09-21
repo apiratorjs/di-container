@@ -67,6 +67,7 @@ export interface IModuleOptions {
     useFactory: (container: IDiContainer) => Promise<any> | any;
     lifetime: TLifetime;
     singletonOptions?: ISingletonOptions;
+    tag?: string;
   }>;
 }
 
