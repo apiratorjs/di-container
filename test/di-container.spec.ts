@@ -2139,6 +2139,100 @@ describe("DIContainer | Tag Functionality", () => {
     });
   });
 
+  describe("Cross-Lifecycle Registration", () => {
+    it("should throw error when trying to register same token with different lifecycles", async () => {
+      const SHARED_TOKEN = "SHARED_TOKEN";
+
+      diConfigurator.addSingleton(SHARED_TOKEN, async () => ({
+        name: "singleton-service",
+        lifecycle: "singleton",
+      }));
+
+      assert.throws(() => {
+        diConfigurator.addScoped(SHARED_TOKEN, async () => ({
+          name: "scoped-service",
+          lifecycle: "scoped",
+        }));
+      }, /Cannot register token 'SHARED_TOKEN' as scoped because it is already registered as singleton/);
+
+      assert.throws(() => {
+        diConfigurator.addTransient(SHARED_TOKEN, async () => ({
+          name: "transient-service",
+          lifecycle: "transient",
+        }));
+      }, /Cannot register token 'SHARED_TOKEN' as transient because it is already registered as singleton/);
+    });
+
+    it("should forbid same token with different tags across different lifecycles", async () => {
+      const TOKEN = "LIFECYCLE_TAG_TOKEN";
+
+      diConfigurator.addSingleton(
+        TOKEN,
+        async () => ({ lifecycle: "singleton" }),
+        undefined,
+        "singleton-tag"
+      );
+
+      assert.throws(() => {
+        diConfigurator.addScoped(
+          TOKEN,
+          async () => ({ lifecycle: "scoped" }),
+          "scoped-tag"
+        );
+      }, /Cannot register token 'LIFECYCLE_TAG_TOKEN' as scoped because it is already registered as singleton/);
+
+      assert.throws(() => {
+        diConfigurator.addTransient(
+          TOKEN,
+          async () => ({ lifecycle: "transient" }),
+          "transient-tag"
+        );
+      }, /Cannot register token 'LIFECYCLE_TAG_TOKEN' as transient because it is already registered as singleton/);
+    });
+
+    it("should throw CrossLifecycleRegistrationError with correct error type", async () => {
+      const TOKEN = "ERROR_TEST_TOKEN";
+
+      diConfigurator.addScoped(TOKEN, async () => ({ type: "scoped" }));
+
+      try {
+        diConfigurator.addSingleton(TOKEN, async () => ({ type: "singleton" }));
+        assert.fail("Expected CrossLifecycleRegistrationError to be thrown");
+      } catch (error: any) {
+        assert.equal(error.constructor.name, "CrossLifecycleRegistrationError");
+        assert.equal(error.existingLifecycle, "scoped");
+        assert.equal(error.attemptedLifecycle, "singleton");
+        assert.ok(error.message.includes("Cannot register token"));
+        assert.ok(
+          error.message.includes("Cross-lifecycle registration is not allowed")
+        );
+      }
+    });
+
+    it("should forbid token registration across lifecycles regardless of tag differences", async () => {
+      const TOKEN = "STRICT_TOKEN";
+
+      diConfigurator.addSingleton(
+        TOKEN,
+        async () => ({ type: "singleton" }),
+        undefined,
+        "tag1"
+      );
+
+      assert.throws(() => {
+        diConfigurator.addScoped(
+          TOKEN,
+          async () => ({ type: "scoped" }),
+          "completely-different-tag"
+        );
+      }, /Cannot register token 'STRICT_TOKEN' as scoped because it is already registered as singleton/);
+
+      assert.throws(() => {
+        diConfigurator.addTransient(TOKEN, async () => ({ type: "transient" }));
+      }, /Cannot register token 'STRICT_TOKEN' as transient because it is already registered as singleton/);
+    });
+  });
+
   describe("resolveTagged", () => {
     it("should resolve singleton service by tag", async () => {
       const TAGGED_SERVICE_TOKEN = "TAGGED_SERVICE_TOKEN";

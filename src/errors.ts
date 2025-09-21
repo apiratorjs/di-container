@@ -32,3 +32,17 @@ export class RequestScopeResolutionError extends BaseApiratorjsError {
     );
   }
 }
+
+export class CrossLifecycleRegistrationError extends BaseApiratorjsError {
+  constructor(
+    token: TServiceToken,
+    public readonly existingLifecycle: string,
+    public readonly attemptedLifecycle: string,
+    public readonly cause?: string
+  ) {
+    super(
+      `Cannot register token '${token.toString()}' as ${attemptedLifecycle} because it is already registered as ${existingLifecycle}. Cross-lifecycle registration is not allowed.`,
+      cause
+    );
+  }
+}

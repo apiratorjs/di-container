@@ -6,6 +6,7 @@ import {
   TServiceToken,
   TUseFactory,
   ISingletonOptions,
+  TLifetime,
 } from "./types";
 import { normalizeTagToCompatibleFormat } from "./utils";
 import { DiDiscoveryService } from "./di-discovery-service";
@@ -13,6 +14,7 @@ import {
   ScopedServiceRegistration,
   ServiceRegistration,
 } from "./service-registration";
+import { CrossLifecycleRegistrationError } from "./errors";
 
 export const DI_CONTAINER_REQUEST_SCOPE_NAMESPACE =
   "APIRATORJS_DI_CONTAINER_REQUEST_SCOPE_NAMESPACE";
@@ -55,6 +57,8 @@ export class DiConfigurator implements IDiConfigurator {
   ) {
     const normalizedTag = normalizeTagToCompatibleFormat(tag ?? "default");
 
+    this.checkForCrossLifecycleRegistration(token, "singleton", normalizedTag);
+
     const serviceRegistrationList =
       this._singletonServiceRegistry.get(token) ?? [];
 
@@ -93,6 +97,8 @@ export class DiConfigurator implements IDiConfigurator {
   ) {
     const normalizedTag = normalizeTagToCompatibleFormat(tag ?? "default");
 
+    this.checkForCrossLifecycleRegistration(token, "scoped", normalizedTag);
+
     const serviceRegistrationList =
       this._requestScopeServiceRegistry.get(token) ?? [];
 
@@ -130,6 +136,8 @@ export class DiConfigurator implements IDiConfigurator {
     tag?: string
   ) {
     const normalizedTag = normalizeTagToCompatibleFormat(tag ?? "default");
+
+    this.checkForCrossLifecycleRegistration(token, "transient", normalizedTag);
 
     const serviceRegistrationList =
       this._transientServiceRegistry.get(token) ?? [];
@@ -185,6 +193,36 @@ export class DiConfigurator implements IDiConfigurator {
 
   public getRequestScopeContext(): AsyncContextStore | undefined {
     return AsyncContext.getContext(DI_CONTAINER_REQUEST_SCOPE_NAMESPACE);
+  }
+
+  private checkForCrossLifecycleRegistration(
+    token: TServiceToken,
+    attemptedLifecycle: "singleton" | "scoped" | "transient",
+    tag: string
+  ): void {
+    const registries: {
+      lifetime: TLifetime;
+      registry: Map<TServiceToken, ServiceRegistration[]>;
+    }[] = [
+      { lifetime: "singleton", registry: this._singletonServiceRegistry },
+      { lifetime: "scoped", registry: this._requestScopeServiceRegistry },
+      { lifetime: "transient", registry: this._transientServiceRegistry },
+    ];
+
+    for (const { lifetime, registry } of registries) {
+      if (lifetime === attemptedLifecycle) {
+        continue;
+      }
+
+      const serviceRegistrationList = registry.get(token);
+      if (serviceRegistrationList && serviceRegistrationList.length > 0) {
+        throw new CrossLifecycleRegistrationError(
+          token,
+          lifetime,
+          attemptedLifecycle
+        );
+      }
+    }
   }
 
   private listServiceRegistrations(): ServiceRegistration[] {
