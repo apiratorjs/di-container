@@ -8,6 +8,8 @@ export type TClassType<T = any> = new (...args: any[]) => T;
  */
 export type TServiceToken<T = any> = string | symbol | TClassType<T>;
 
+export type TNormalizedServiceToken = string | symbol;
+
 /**
  * The type of the service token.
  */

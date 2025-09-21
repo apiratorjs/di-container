@@ -1,4 +1,5 @@
 import { TServiceToken } from "./types";
+import { normalizeToken } from "./utils";
 
 export class BaseApiratorjsError extends Error {
   constructor(message: string, public readonly cause?: string) {
@@ -11,8 +12,9 @@ export class BaseApiratorjsError extends Error {
 
 export class CircularDependencyError extends BaseApiratorjsError {
   constructor(token: TServiceToken, public readonly chain: string[]) {
+    const normalizedToken = normalizeToken(token);
     super(
-      `Circular dependency detected for token ${token.toString()}`,
+      `Circular dependency detected for token ${normalizedToken.toString()}`,
       chain.join(" -> ")
     );
   }
@@ -20,14 +22,19 @@ export class CircularDependencyError extends BaseApiratorjsError {
 
 export class UnregisteredDependencyError extends BaseApiratorjsError {
   constructor(token: TServiceToken, public readonly cause?: string) {
-    super(`Service for token ${token.toString()} is not registered`, cause);
+    const normalizedToken = normalizeToken(token);
+    super(
+      `Service for token ${normalizedToken.toString()} is not registered`,
+      cause
+    );
   }
 }
 
 export class RequestScopeResolutionError extends BaseApiratorjsError {
   constructor(token: TServiceToken, public readonly cause?: string) {
+    const normalizedToken = normalizeToken(token);
     super(
-      `Cannot resolve request-scoped service for token '${token.toString()}' outside of a request scope. It is likely that a singleton or transient service is trying to inject a request-scoped dependency.`,
+      `Cannot resolve request-scoped service for token '${normalizedToken.toString()}' outside of a request scope. It is likely that a singleton or transient service is trying to inject a request-scoped dependency.`,
       cause
     );
   }
@@ -40,8 +47,9 @@ export class CrossLifecycleRegistrationError extends BaseApiratorjsError {
     public readonly attemptedLifecycle: string,
     public readonly cause?: string
   ) {
+    const normalizedToken = normalizeToken(token);
     super(
-      `Cannot register token '${token.toString()}' as ${attemptedLifecycle} because it is already registered as ${existingLifecycle}. Cross-lifecycle registration is not allowed.`,
+      `Cannot register token '${normalizedToken.toString()}' as ${attemptedLifecycle} because it is already registered as ${existingLifecycle}. Cross-lifecycle registration is not allowed.`,
       cause
     );
   }

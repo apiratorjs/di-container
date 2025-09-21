@@ -1,5 +1,10 @@
 import { BaseApiratorjsError } from "./errors";
-import { TServiceToken, TServiceTokenType } from "./types";
+import {
+  TClassType,
+  TNormalizedServiceToken,
+  TServiceToken,
+  TServiceTokenType,
+} from "./types";
 
 export function tokenToString(token: TServiceToken): string {
   if (typeof token === "string") return token;
@@ -28,4 +33,23 @@ export function normalizeTagToCompatibleFormat(tag?: string): string {
   }
 
   return tag.toLowerCase();
+}
+
+export function isClass(v: any): boolean {
+  return (
+    typeof v === "function" &&
+    /^class\s/.test(Function.prototype.toString.call(v))
+  );
+}
+
+export function isFunction(v: any): boolean {
+  return typeof v === "function";
+}
+
+export function normalizeToken(token: TServiceToken): TNormalizedServiceToken {
+  if (isClass(token)) {
+    return `class ${(token as TClassType<any>).name}`;
+  }
+
+  return token as TNormalizedServiceToken;
 }
