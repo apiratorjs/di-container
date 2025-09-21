@@ -2137,6 +2137,118 @@ describe("DIContainer | Tag Functionality", () => {
         assert.ok(classServices[0] instanceof TestService);
       });
     });
+
+    describe("Class Token Lifetimes", () => {
+      it("should work with singleton lifetime using class token", async () => {
+        class SingletonService {
+          public readonly id: string;
+          public readonly type = "singleton";
+
+          constructor() {
+            this.id = Math.random().toString(36);
+          }
+
+          public getValue(): string {
+            return `singleton-${this.id}`;
+          }
+        }
+
+        diConfigurator.addSingleton(SingletonService, async () => new SingletonService());
+
+        const instance1 = await diContainer.resolve(SingletonService);
+        const instance2 = await diContainer.resolve(SingletonService);
+
+        assert.ok(instance1 instanceof SingletonService);
+        assert.ok(instance2 instanceof SingletonService);
+        assert.strictEqual(instance1, instance2, "Singleton instances should be the same");
+        assert.equal(instance1.type, "singleton");
+        assert.equal(instance1.getValue(), instance2.getValue());
+      });
+
+      it("should work with scoped lifetime using class token", async () => {
+        class ScopedService {
+          public readonly id: string;
+          public readonly type = "scoped";
+
+          constructor() {
+            this.id = Math.random().toString(36);
+          }
+
+          public getValue(): string {
+            return `scoped-${this.id}`;
+          }
+        }
+
+        diConfigurator.addScoped(ScopedService, async () => new ScopedService());
+
+        // Test within same scope
+        await diContainer.runWithNewRequestScope(async (scopedContainer) => {
+          const instance1 = await scopedContainer.resolve(ScopedService);
+          const instance2 = await scopedContainer.resolve(ScopedService);
+
+          assert.ok(instance1 instanceof ScopedService);
+          assert.ok(instance2 instanceof ScopedService);
+          assert.strictEqual(instance1, instance2, "Scoped instances should be the same within scope");
+          assert.equal(instance1.type, "scoped");
+          assert.equal(instance1.getValue(), instance2.getValue());
+        }, new AsyncContextStore());
+
+        // Test across different scopes
+        let firstScopeInstance: ScopedService | undefined;
+        let secondScopeInstance: ScopedService | undefined;
+
+        await diContainer.runWithNewRequestScope(async (scope1) => {
+          firstScopeInstance = await scope1.resolve(ScopedService);
+        }, new AsyncContextStore());
+
+        await diContainer.runWithNewRequestScope(async (scope2) => {
+          secondScopeInstance = await scope2.resolve(ScopedService);
+        }, new AsyncContextStore());
+
+        assert.ok(firstScopeInstance instanceof ScopedService);
+        assert.ok(secondScopeInstance instanceof ScopedService);
+        assert.notStrictEqual(firstScopeInstance, secondScopeInstance, "Scoped instances should be different across scopes");
+        assert.notEqual(firstScopeInstance!.getValue(), secondScopeInstance!.getValue());
+      });
+
+      it("should work with transient lifetime using class token", async () => {
+        class TransientService {
+          public readonly id: string;
+          public readonly type = "transient";
+
+          constructor() {
+            this.id = Math.random().toString(36);
+          }
+
+          public getValue(): string {
+            return `transient-${this.id}`;
+          }
+        }
+
+        diConfigurator.addTransient(TransientService, async () => new TransientService());
+
+        const instance1 = await diContainer.resolve(TransientService);
+        const instance2 = await diContainer.resolve(TransientService);
+
+        assert.ok(instance1 instanceof TransientService);
+        assert.ok(instance2 instanceof TransientService);
+        assert.notStrictEqual(instance1, instance2, "Transient instances should always be different");
+        assert.equal(instance1.type, "transient");
+        assert.equal(instance2.type, "transient");
+        assert.notEqual(instance1.getValue(), instance2.getValue());
+
+        // Test within scoped container too
+        await diContainer.runWithNewRequestScope(async (scopedContainer) => {
+          const scopedInstance1 = await scopedContainer.resolve(TransientService);
+          const scopedInstance2 = await scopedContainer.resolve(TransientService);
+
+          assert.ok(scopedInstance1 instanceof TransientService);
+          assert.ok(scopedInstance2 instanceof TransientService);
+          assert.notStrictEqual(scopedInstance1, scopedInstance2, "Transient instances should be different even in scoped container");
+          assert.notEqual(scopedInstance1.getValue(), scopedInstance2.getValue());
+        }, new AsyncContextStore());
+      });
+    });
   });
 
   describe("Cross-Lifecycle Registration", () => {
