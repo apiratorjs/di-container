@@ -5,6 +5,7 @@ import {
   CircularDependencyError,
   DiConfigurator,
   DiContainer,
+  IDiContainer,
   IOnConstruct,
   IOnDispose,
   TServiceToken,
@@ -19,7 +20,7 @@ describe("DiContainer", () => {
   const SCOPED_WITH_HOOKS: TServiceToken = "SCOPED_WITH_HOOKS";
 
   let diConfigurator: DiConfigurator;
-  let diContainer: DiContainer;
+  let diContainer: IDiContainer;
   let lazySingletonBuildCount: number;
   let eagerSingletonBuildCount: number;
   let scopedBuildCount: number;
@@ -514,7 +515,7 @@ describe("DiContainer", () => {
       assert.equal(onDisposeCallCount, 0, "onDispose should not be called yet");
 
       // Call disposeSingletons
-      await diContainer.disposeSingletons();
+      await (diContainer as DiContainer).disposeSingletons();
       assert.equal(onDisposeCallCount, 1, "onDispose should be called once");
     });
 
@@ -535,7 +536,7 @@ describe("DiContainer", () => {
       const firstInstance = await diContainer.resolve(DISPOSABLE_SINGLETON);
 
       // Call disposeSingletons
-      await diContainer.disposeSingletons();
+      await (diContainer as DiContainer).disposeSingletons();
       assert.equal(onDisposeCallCount, 1);
 
       // Resolve again - should create a new instance
@@ -584,7 +585,7 @@ describe("DiContainer", () => {
       await diContainer.resolve(TAGGED_DISPOSABLE, "secondary");
 
       // Call disposeSingletons
-      await diContainer.disposeSingletons();
+      await (diContainer as DiContainer).disposeSingletons();
 
       assert.equal(
         primaryDisposeCount,
@@ -612,7 +613,7 @@ describe("DiContainer", () => {
       assert.equal(factoryCallCount, 1);
 
       // Call disposeSingletons - should not throw
-      await diContainer.disposeSingletons();
+      await (diContainer as DiContainer).disposeSingletons();
 
       // All singleton services should be cleared/reset, even if they don't implement IOnDispose
       // but onDispose should not be called for services that don't implement it
@@ -667,7 +668,7 @@ describe("DiContainer", () => {
       );
 
       // Call disposeSingletons
-      await diContainer.disposeSingletons();
+      await (diContainer as DiContainer).disposeSingletons();
       assert.equal(onDisposeCallCount, 1, "onDispose should be called");
     });
 
@@ -690,7 +691,7 @@ describe("DiContainer", () => {
       await diContainer.resolve(ASYNC_DISPOSABLE);
 
       // Call disposeSingletons
-      await diContainer.disposeSingletons();
+      await (diContainer as DiContainer).disposeSingletons();
 
       assert.equal(
         asyncDisposeCompleted,
@@ -723,7 +724,7 @@ describe("DiContainer", () => {
       await diContainer.resolve(DISPOSABLE_2);
 
       const startTime = Date.now();
-      await diContainer.disposeSingletons();
+      await (diContainer as DiContainer).disposeSingletons();
       const endTime = Date.now();
 
       // Should complete in roughly 20ms (concurrent), not 30ms (sequential)
@@ -756,7 +757,7 @@ describe("DiContainer", () => {
       await diContainer.resolve(RESOLVED_SINGLETON);
 
       // Call disposeSingletons
-      await diContainer.disposeSingletons();
+      await (diContainer as DiContainer).disposeSingletons();
 
       assert.equal(
         unresolvedDisposeCount,
@@ -775,7 +776,7 @@ describe("DiContainer", () => {
     it("should return early when not in request scope context", async () => {
       assert.equal(diContainer.isInRequestScopeContext(), false);
 
-      await diContainer.disposeScopedServices();
+      await (diContainer as DiContainer).disposeScopedServices();
 
       assert.equal(diContainer.isInRequestScopeContext(), false);
     });
@@ -801,7 +802,7 @@ describe("DiContainer", () => {
           "onDispose should not be called yet"
         );
 
-        await diContainer.disposeScopedServices();
+        await (diContainer as DiContainer).disposeScopedServices();
         assert.equal(onDisposeCallCount, 1, "onDispose should be called once");
       });
     });
@@ -820,7 +821,7 @@ describe("DiContainer", () => {
         assert.equal(factoryCallCount, 1);
         assert.deepEqual(firstInstance, { name: "clearable-service", id: 1 });
 
-        await diContainer.disposeScopedServices();
+        await (diContainer as DiContainer).disposeScopedServices();
 
         const secondInstance = await diContainer.resolve(CLEARABLE_SCOPED);
         assert.equal(factoryCallCount, 2, "Factory should be called again");
@@ -857,7 +858,7 @@ describe("DiContainer", () => {
         await diContainer.resolve(SCOPED_SERVICE_1);
         await diContainer.resolve(SCOPED_SERVICE_2);
 
-        await diContainer.disposeScopedServices();
+        await (diContainer as DiContainer).disposeScopedServices();
 
         assert.equal(service1DisposeCount, 1, "Service 1 should be disposed");
         assert.equal(service2DisposeCount, 1, "Service 2 should be disposed");
@@ -895,7 +896,7 @@ describe("DiContainer", () => {
         await diContainer.resolve(TAGGED_SCOPED_DISPOSABLE, "primary");
         await diContainer.resolve(TAGGED_SCOPED_DISPOSABLE, "secondary");
 
-        await diContainer.disposeScopedServices();
+        await (diContainer as DiContainer).disposeScopedServices();
 
         assert.equal(
           primaryDisposeCount,
@@ -923,7 +924,7 @@ describe("DiContainer", () => {
         const firstInstance = await diContainer.resolve(NON_DISPOSABLE_SCOPED);
         assert.equal(factoryCallCount, 1);
 
-        await diContainer.disposeScopedServices();
+        await (diContainer as DiContainer).disposeScopedServices();
 
         const secondInstance = await diContainer.resolve(NON_DISPOSABLE_SCOPED);
         assert.equal(factoryCallCount, 2, "Factory should be called again");
@@ -952,7 +953,7 @@ describe("DiContainer", () => {
       await runScope(async () => {
         await diContainer.resolve(ASYNC_DISPOSABLE_SCOPED);
 
-        await diContainer.disposeScopedServices();
+        await (diContainer as DiContainer).disposeScopedServices();
 
         assert.equal(
           asyncDisposeCompleted,
@@ -988,7 +989,7 @@ describe("DiContainer", () => {
         await diContainer.resolve(DISPOSABLE_SCOPED_2);
 
         const startTime = Date.now();
-        await diContainer.disposeScopedServices();
+        await (diContainer as DiContainer).disposeScopedServices();
         const endTime = Date.now();
 
         assert.ok(endTime - startTime < 30, "Should dispose concurrently");
@@ -1025,7 +1026,7 @@ describe("DiContainer", () => {
       await runScope(async () => {
         await diContainer.resolve(RESOLVED_SCOPED);
 
-        await diContainer.disposeScopedServices();
+        await (diContainer as DiContainer).disposeScopedServices();
 
         assert.equal(
           unresolvedDisposeCount,
@@ -1065,7 +1066,7 @@ describe("DiContainer", () => {
         );
         assert.equal(nonDisposableFactoryCount, 1);
 
-        await diContainer.disposeScopedServices();
+        await (diContainer as DiContainer).disposeScopedServices();
 
         assert.equal(
           disposableCallCount,
@@ -1099,17 +1100,17 @@ describe("DiContainer", () => {
       await runScope(async () => {
         await diContainer.resolve(MULTI_DISPOSE_SCOPED);
 
-        await diContainer.disposeScopedServices();
+        await (diContainer as DiContainer).disposeScopedServices();
         assert.equal(disposeCallCount, 1, "First disposal should work");
 
-        await diContainer.disposeScopedServices();
+        await (diContainer as DiContainer).disposeScopedServices();
         assert.equal(
           disposeCallCount,
           1,
           "Second disposal should be safe (no additional calls)"
         );
 
-        await diContainer.disposeScopedServices();
+        await (diContainer as DiContainer).disposeScopedServices();
         assert.equal(
           disposeCallCount,
           1,
@@ -1126,7 +1127,7 @@ describe("DIContainer | Service Override", () => {
   const TRANSIENT_TOKEN: TServiceToken = "TRANSIENT_TOKEN";
 
   let diConfigurator: DiConfigurator;
-  let diContainer: DiContainer;
+  let diContainer: IDiContainer;
 
   const runScope = async (callback: () => Promise<any>) => {
     return await diContainer.runWithNewRequestScope(
@@ -1193,7 +1194,7 @@ describe("DIContainer | Tag Functionality", () => {
   const TAGGED_TRANSIENT_TOKEN: TServiceToken = "TAGGED_TRANSIENT_TOKEN";
 
   let diConfigurator: DiConfigurator;
-  let diContainer: DiContainer;
+  let diContainer: IDiContainer;
 
   const runScope = async (callback: () => Promise<any>) => {
     return await diContainer.runWithNewRequestScope(

@@ -93,7 +93,7 @@ export interface IDiConfigurator {
 
   addModule(module: IDiModule): this;
 
-  build(options?: IBuildOptions): Promise<DiContainer>;
+  build(options?: IBuildOptions): Promise<IDiContainer>;
 
   getDiscoveryService(): DiDiscoveryService;
 }

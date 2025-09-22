@@ -3,6 +3,7 @@ import { DiContainer } from "./di-container";
 import {
   IBuildOptions,
   IDiConfigurator,
+  IDiContainer,
   IDiModule,
   ISingletonOptions,
   TLifetime,
@@ -179,7 +180,7 @@ export class DiConfigurator implements IDiConfigurator {
     return this;
   }
 
-  public async build({ autoInit }: IBuildOptions = { autoInit: true }): Promise<DiContainer> {
+  public async build({ autoInit }: IBuildOptions = { autoInit: true }): Promise<IDiContainer> {
     const container = new DiContainer(this);
     if (autoInit) {
       await container.init();

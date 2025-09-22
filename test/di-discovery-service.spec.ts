@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { DiDiscoveryService } from "../src/di-discovery-service";
-import { IServiceRegistration, TLifetime, IDiConfigurator } from "../src/types";
+import { IServiceRegistration, TLifetime, IDiConfigurator, IDiContainer } from "../src/types";
 import { DiConfigurator } from "../src/di-configurator";
 import { ServiceRegistration } from "../src/service-registration";
 import { DiContainer } from "../src";
@@ -321,7 +321,7 @@ describe("DiDiscoveryService", () => {
   describe("Integration Tests with DiConfigurator", () => {
     let diConfigurator: DiConfigurator;
     let discoveryService: DiDiscoveryService;
-    let diContainer: DiContainer;
+    let diContainer: IDiContainer;
 
     // Test service classes
     class DatabaseService {
