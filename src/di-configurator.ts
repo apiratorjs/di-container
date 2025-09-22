@@ -181,9 +181,13 @@ export class DiConfigurator implements IDiConfigurator {
     return this;
   }
 
-  public async build(): Promise<DiContainer> {
+  public async build(
+    { autoInit }: { autoInit?: boolean } = { autoInit: true }
+  ): Promise<DiContainer> {
     const container = new DiContainer(this);
-    await container.init();
+    if (autoInit) {
+      await container.init();
+    }
     return container;
   }
 
