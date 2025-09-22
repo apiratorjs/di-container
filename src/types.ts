@@ -93,7 +93,7 @@ export interface IDiConfigurator {
 
   addModule(module: IDiModule): this;
 
-  build(): Promise<DiContainer>;
+  build(options?: IBuildOptions): Promise<DiContainer>;
 
   getDiscoveryService(): DiDiscoveryService;
 }
@@ -117,4 +117,8 @@ export interface IServiceRegistration<T = any> {
   tag: string;
   metatype?: TClassType<T>;
   getInstance(): T | undefined;
+}
+
+export interface IBuildOptions {
+  autoInit?: boolean;
 }
