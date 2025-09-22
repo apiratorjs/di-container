@@ -1,5 +1,11 @@
 import { AsyncContext, AsyncContextStore } from "@apiratorjs/async-context";
-import { IDiContainer, IOnConstruct, IOnDispose, TServiceToken } from "./types";
+import {
+  IDiContainer,
+  IInitableDiContainer,
+  IOnConstruct,
+  IOnDispose,
+  TServiceToken,
+} from "./types";
 import { DiDiscoveryService } from "./di-discovery-service";
 import {
   DI_CONTAINER_REQUEST_SCOPE_NAMESPACE,
@@ -13,7 +19,7 @@ import {
 } from "./errors";
 import { normalizeTagToCompatibleFormat, tokenToString } from "./utils";
 
-export class DiContainer implements IDiContainer {
+export class DiContainer implements IInitableDiContainer {
   private _isInitialized = false;
   private readonly _serviceMutexes = new Map<TServiceToken, Mutex>();
   private readonly _resolutionChains = new Map<

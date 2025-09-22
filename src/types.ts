@@ -54,6 +54,10 @@ export interface IDiContainer {
   getDiscoveryService(): DiDiscoveryService;
 }
 
+export interface IInitableDiContainer extends IDiContainer {
+  init(): Promise<void>;
+}
+
 export interface IDiModule {
   register(configurator: IDiConfigurator): void;
 }
@@ -93,7 +97,11 @@ export interface IDiConfigurator {
 
   addModule(module: IDiModule): this;
 
-  build(options?: IBuildOptions): Promise<IDiContainer>;
+  build<T extends IBuildOptions>(
+    options: T
+  ): Promise<
+    T extends { autoInit: false } ? IInitableDiContainer : IDiContainer
+  >;
 
   getDiscoveryService(): DiDiscoveryService;
 }

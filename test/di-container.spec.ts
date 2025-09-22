@@ -6,6 +6,7 @@ import {
   DiConfigurator,
   DiContainer,
   IDiContainer,
+  IInitableDiContainer,
   IOnConstruct,
   IOnDispose,
   TServiceToken,

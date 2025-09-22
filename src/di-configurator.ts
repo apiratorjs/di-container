@@ -5,14 +5,18 @@ import {
   IDiConfigurator,
   IDiContainer,
   IDiModule,
+  IInitableDiContainer,
   ISingletonOptions,
   TLifetime,
   TServiceToken,
-  TUseFactory
+  TUseFactory,
 } from "./types";
 import { normalizeTagToCompatibleFormat } from "./utils";
 import { DiDiscoveryService } from "./di-discovery-service";
-import { ScopedServiceRegistration, ServiceRegistration } from "./service-registration";
+import {
+  ScopedServiceRegistration,
+  ServiceRegistration,
+} from "./service-registration";
 import { CrossLifecycleRegistrationError } from "./errors";
 
 export const DI_CONTAINER_REQUEST_SCOPE_NAMESPACE =
@@ -79,7 +83,7 @@ export class DiConfigurator implements IDiConfigurator {
       factory,
       lifetime: "singleton",
       tag: normalizedTag,
-      singletonOptions
+      singletonOptions,
     });
 
     serviceRegistrationList.push(serviceRegistration);
@@ -119,7 +123,7 @@ export class DiConfigurator implements IDiConfigurator {
       factory,
       lifetime: "scoped",
       tag: normalizedTag,
-      requestScopeContextGetter: () => this.getRequestScopeContext()
+      requestScopeContextGetter: () => this.getRequestScopeContext(),
     });
 
     serviceRegistrationList.push(serviceRegistration);
@@ -158,7 +162,7 @@ export class DiConfigurator implements IDiConfigurator {
       token,
       factory,
       lifetime: "transient",
-      tag: normalizedTag
+      tag: normalizedTag,
     });
 
     serviceRegistrationList.push(serviceRegistration);
@@ -180,9 +184,13 @@ export class DiConfigurator implements IDiConfigurator {
     return this;
   }
 
-  public async build({ autoInit }: IBuildOptions = { autoInit: true }): Promise<IDiContainer> {
+  public async build<T extends IBuildOptions>(
+    options: T = { autoInit: true } as T
+  ): Promise<
+    T extends { autoInit: false } ? IInitableDiContainer : IDiContainer
+  > {
     const container = new DiContainer(this);
-    if (autoInit) {
+    if (options.autoInit) {
       await container.init();
     }
     return container;
@@ -207,7 +215,7 @@ export class DiConfigurator implements IDiConfigurator {
     }[] = [
       { lifetime: "singleton", registry: this._singletonServiceRegistry },
       { lifetime: "scoped", registry: this._requestScopeServiceRegistry },
-      { lifetime: "transient", registry: this._transientServiceRegistry }
+      { lifetime: "transient", registry: this._transientServiceRegistry },
     ];
 
     for (const { lifetime, registry } of registries) {
@@ -230,7 +238,7 @@ export class DiConfigurator implements IDiConfigurator {
     return [
       ...Array.from(this._singletonServiceRegistry.values()).flat(),
       ...Array.from(this._requestScopeServiceRegistry.values()).flat(),
-      ...Array.from(this._transientServiceRegistry.values()).flat()
+      ...Array.from(this._transientServiceRegistry.values()).flat(),
     ];
   }
 }
