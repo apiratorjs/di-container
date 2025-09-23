@@ -1,21 +1,26 @@
-import { IServiceRegistration, TLifetime, TServiceToken } from "./types";
+import {
+  IDiDiscoveryService,
+  IServiceRegistration,
+  TLifetime,
+  TServiceToken,
+} from "./types";
 
-export class DiDiscoveryService {
+export class DiDiscoveryService implements IDiDiscoveryService {
   constructor(
     private readonly _serviceRegistrationsGetter: () => IServiceRegistration[]
   ) {}
 
-  getAll(): IServiceRegistration[] {
+  public getAll(): IServiceRegistration[] {
     return this._serviceRegistrationsGetter();
   }
 
-  getServicesByTag(tag: string): IServiceRegistration[] {
+  public getServicesByTag(tag: string): IServiceRegistration[] {
     return this._serviceRegistrationsGetter().filter(
       (serviceRegistration) => serviceRegistration.tag === tag
     );
   }
 
-  getServicesByServiceToken(
+  public getServicesByServiceToken(
     serviceToken: TServiceToken
   ): IServiceRegistration[] {
     return this._serviceRegistrationsGetter().filter(
@@ -23,7 +28,7 @@ export class DiDiscoveryService {
     );
   }
 
-  getServicesByLifetime(lifetime: TLifetime): IServiceRegistration[] {
+  public getServicesByLifetime(lifetime: TLifetime): IServiceRegistration[] {
     return this._serviceRegistrationsGetter().filter(
       (serviceRegistration) => serviceRegistration.lifetime === lifetime
     );

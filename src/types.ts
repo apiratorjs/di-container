@@ -130,3 +130,12 @@ export interface IServiceRegistration<T = any> {
 export interface IBuildOptions {
   autoInit?: boolean;
 }
+
+export interface IDiDiscoveryService {
+  getAll(): IServiceRegistration[];
+  getServicesByTag(tag: string): IServiceRegistration[];
+  getServicesByServiceToken(
+    serviceToken: TServiceToken
+  ): IServiceRegistration[];
+  getServicesByLifetime(lifetime: TLifetime): IServiceRegistration[];
+}
