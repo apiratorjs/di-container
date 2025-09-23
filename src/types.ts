@@ -51,7 +51,7 @@ export interface IDiContainer {
 
   dispose(): Promise<void>;
 
-  getDiscoveryService(): DiDiscoveryService;
+  getDiscoveryService(): IDiDiscoveryService;
 }
 
 export interface IInitableDiContainer extends IDiContainer {
@@ -103,7 +103,7 @@ export interface IDiConfigurator {
     T extends { autoInit: false } ? IInitableDiContainer : IDiContainer
   >;
 
-  getDiscoveryService(): DiDiscoveryService;
+  getDiscoveryService(): IDiDiscoveryService;
 }
 
 export interface ISingletonOptions {
