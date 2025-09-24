@@ -123,10 +123,11 @@ await container.runWithNewRequestScope(async (container) => {
 const scopedService = await container.resolve("SCOPED_SERVICE"); // Error!
 ```
 
-**Service Tags (Optional):** Register multiple implementations when needed:
+**Service Tags (Optional):** Register multiple implementations when needed. If no tag is specified, services automatically get the "default" tag:
 ```typescript
 configurator.addSingleton("PAYMENT", () => new StripePayment(), undefined, "stripe");
 configurator.addSingleton("PAYMENT", () => new PayPalPayment(), undefined, "paypal");
+configurator.addSingleton("PAYMENT", () => new BankPayment()); // Gets "default" tag automatically
 ```
 
 **Lifecycle Hooks:** Services can implement `onConstruct()` and `onDispose()` for automatic initialization and cleanup.
@@ -139,9 +140,9 @@ The `IDiConfigurator` is the main interface for configuring dependency injection
 
 | Method | Description | Example |
 |--------|-------------|---------|
-| `addSingleton<T>(token, factory, options?, tag?)` | Register a singleton service | `configurator.addSingleton("DB", () => new Database(), { eager: true })` |
-| `addScoped<T>(token, factory, tag?)` | Register a request-scoped service | `configurator.addScoped("USER_CTX", async (cfg) => new UserContext())` |
-| `addTransient<T>(token, factory, tag?)` | Register a transient service | `configurator.addTransient("LOGGER", () => new Logger(), "console")` |
+| `addSingleton<T>(token, factory, options?, tag?)` | Register a singleton service (tag defaults to "default") | `configurator.addSingleton("DB", () => new Database(), { eager: true })` |
+| `addScoped<T>(token, factory, tag?)` | Register a request-scoped service (tag defaults to "default") | `configurator.addScoped("USER_CTX", async (cfg) => new UserContext())` |
+| `addTransient<T>(token, factory, tag?)` | Register a transient service (tag defaults to "default") | `configurator.addTransient("LOGGER", () => new Logger(), "console")` |
 | `addModule(module)` | Register a module with multiple services | `configurator.addModule(new DatabaseModule())` |
 
 ### Container Management Methods
@@ -192,10 +193,10 @@ The `IDiContainer` is the runtime interface for resolving services after buildin
 |--------|-------------|---------|
 | `resolve<T>(token, tag?)` | Resolve a service (optional) | `Promise<T \| undefined>` |
 | `resolveRequired<T>(token, tag?)` | Resolve a service (throws if not found) | `Promise<T>` |
-| `resolveAll<T>(token)` | Resolve all implementations | `Promise<T[]>` |
+| `resolveAll<T>(token)` | Resolve all implementations with metadata | `Promise<IResolveAllResult<T>[]>` |
 | `resolveTagged<T>(tag)` | Resolve first service with tag | `Promise<T \| undefined>` |
 | `resolveTaggedRequired<T>(tag)` | Resolve service with tag (throws if not found) | `Promise<T>` |
-| `resolveAllTagged<T>(tag)` | Resolve all services with tag | `Promise<T[]>` |
+| `resolveAllTagged(tag)` | Resolve all services with tag and metadata | `Promise<IResolveAllResult[]>` |
 
 ### Runtime Management Methods
 
@@ -260,6 +261,29 @@ await container.dispose();
 
 Query and introspect registered services for debugging, monitoring, and dynamic resolution. The discovery service returns `IServiceRegistration` objects with detailed information about each service.
 
+#### IResolveAllResult Interface
+
+The `resolveAll` and `resolveAllTagged` methods return results with both the service instance and its registration metadata:
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `instance` | `T` | The resolved service instance |
+| `registration` | `IServiceRegistration<T>` | Service registration metadata |
+
+Example usage:
+```typescript
+const results = await container.resolveAll<UserService>("USER_SERVICE");
+results.forEach(result => {
+  console.log("Service instance:", result.instance);
+  console.log("Service tag:", result.registration.tag);
+  console.log("Service lifetime:", result.registration.lifetime);
+  console.log("Is resolved:", result.registration.isResolved);
+});
+
+// Extract just the instances if you only need them
+const instances = results.map(result => result.instance);
+```
+
 #### IServiceRegistration Interface
 
 Each service registration returned by the discovery service contains:
@@ -269,7 +293,7 @@ Each service registration returned by the discovery service contains:
 | `token` | `TServiceToken` | The service token (string, symbol, or class) |
 | `tokenType` | `"string" \| "symbol" \| "class"` | Type of the token |
 | `lifetime` | `"singleton" \| "scoped" \| "transient"` | Service lifetime |
-| `tag` | `string` | Service tag (defaults to "default") |
+| `tag` | `string` | Service tag (automatically set to "default" when not specified) |
 | `isResolved` | `boolean` | Whether service instance has been created |
 | `singletonOptions` | `ISingletonOptions?` | Options for singleton services |
 | `metatype` | `TClassType?` | Class constructor if token is a class |
@@ -400,6 +424,51 @@ await container.runWithNewRequestScope(async (container) => {
 // const userService = await container.resolve("USER_SERVICE"); // Error!
 
 await container.dispose(); // Cleanup
+```
+
+### Working with Multiple Service Implementations
+
+When you register multiple implementations of the same service with different tags, you can resolve them all at once:
+
+```typescript
+const configurator = new DiConfigurator();
+
+// Register multiple payment processors
+configurator.addSingleton("PAYMENT", () => new StripePayment(), undefined, "stripe");
+configurator.addSingleton("PAYMENT", () => new PayPalPayment(), undefined, "paypal");
+configurator.addSingleton("PAYMENT", () => new BankTransferPayment(), undefined, "bank");
+configurator.addSingleton("PAYMENT", () => new CashPayment()); // No tag specified = "default" tag
+
+const container = await configurator.build();
+
+// Resolve all payment implementations with metadata
+const paymentResults = await container.resolveAll("PAYMENT");
+console.log(`Found ${paymentResults.length} payment processors`); // Will show 4 processors
+
+paymentResults.forEach(result => {
+  console.log(`Payment processor: ${result.registration.tag}`);
+  console.log(`Instance:`, result.instance);
+  
+  // Use the instance
+  const payment = result.instance;
+  payment.processPayment(100);
+});
+
+// Extract just the instances if you only need them
+const paymentInstances = paymentResults.map(result => result.instance);
+
+// Or resolve all services with a specific tag
+const stripeResults = await container.resolveAllTagged("stripe");
+console.log(`Found ${stripeResults.length} services with 'stripe' tag`);
+
+// Resolve services with the default tag
+const defaultResults = await container.resolveAllTagged("default");
+console.log(`Found ${defaultResults.length} services with 'default' tag`);
+
+// Or resolve the default payment processor directly
+const defaultPayment = await container.resolveTagged("default"); // Gets CashPayment instance
+
+await container.dispose();
 ```
 
 ## Modules
