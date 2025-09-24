@@ -127,7 +127,7 @@ export class DiContainer implements IInitableDiContainer {
     return service;
   }
 
-  public async resolveAllTagged<T>(tag: string): Promise<T[]> {
+  public async resolveAllTagged(tag: string): Promise<IResolveAllResult[]> {
     const normalizedTag = normalizeTagToCompatibleFormat(tag);
     const serviceRegistrationList = this._diConfigurator
       .getDiscoveryService()
@@ -146,7 +146,9 @@ export class DiContainer implements IInitableDiContainer {
       )
     );
 
-    return results.filter((result): result is T => result !== undefined);
+    return results.filter(
+      (result): result is IResolveAllResult => result !== undefined
+    );
   }
 
   public async runWithNewRequestScope(

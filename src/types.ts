@@ -40,7 +40,7 @@ export interface IDiContainer {
 
   resolveTaggedRequired<T>(tag: string): Promise<T>;
 
-  resolveAllTagged<T>(tag: string): Promise<T[]>;
+  resolveAllTagged(tag: string): Promise<IResolveAllResult[]>;
 
   runWithNewRequestScope(
     callback: (diContainer: IDiContainer) => Promise<any> | any,
