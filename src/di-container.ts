@@ -4,6 +4,7 @@ import {
   IInitableDiContainer,
   IOnConstruct,
   IOnDispose,
+  IResolveAllResult,
   TServiceToken,
 } from "./types";
 import { DiDiscoveryService } from "./di-discovery-service";
@@ -67,7 +68,9 @@ export class DiContainer implements IInitableDiContainer {
     return service;
   }
 
-  public async resolveAll<T>(token: TServiceToken<T>): Promise<T[]> {
+  public async resolveAll<T>(
+    token: TServiceToken<T>
+  ): Promise<IResolveAllResult<T>[]> {
     this.checkForCircularDependency(token);
 
     const mutex = this.getMutexFor(token);
@@ -137,11 +140,13 @@ export class DiContainer implements IInitableDiContainer {
       return [];
     }
 
-    return await Promise.all(
+    const results = await Promise.all(
       serviceRegistrationList.map((serviceRegistration) =>
         this.resolve(serviceRegistration.token, serviceRegistration.tag)
       )
     );
+
+    return results.filter((result): result is T => result !== undefined);
   }
 
   public async runWithNewRequestScope(
@@ -296,18 +301,23 @@ export class DiContainer implements IInitableDiContainer {
     return serviceInstance;
   }
 
-  private async getSingletonAll<T>(token: TServiceToken): Promise<T[]> {
+  private async getSingletonAll<T>(
+    token: TServiceToken
+  ): Promise<IResolveAllResult<T>[]> {
     const serviceRegistrationList =
       this._diConfigurator.singletonServiceRegistry.get(token);
     if (!serviceRegistrationList?.length) {
       return [];
     }
 
-    const services: T[] = [];
+    const services: IResolveAllResult<T>[] = [];
 
     for (const serviceRegistration of serviceRegistrationList) {
       if (serviceRegistration.isResolved) {
-        services.push(serviceRegistration.getInstance());
+        services.push({
+          registration: serviceRegistration,
+          instance: serviceRegistration.getInstance(),
+        });
       } else {
         if (!serviceRegistration.factory) {
           continue;
@@ -320,7 +330,10 @@ export class DiContainer implements IInitableDiContainer {
 
         serviceRegistration.setInstance(serviceInstance);
 
-        services.push(serviceInstance);
+        services.push({
+          registration: serviceRegistration,
+          instance: serviceInstance,
+        });
       }
     }
 
@@ -375,7 +388,9 @@ export class DiContainer implements IInitableDiContainer {
     return serviceInstance;
   }
 
-  private async getScopedAll<T>(token: TServiceToken): Promise<T[]> {
+  private async getScopedAll<T>(
+    token: TServiceToken
+  ): Promise<IResolveAllResult<T>[]> {
     const serviceRegistrationList =
       this._diConfigurator.requestScopeServiceRegistry.get(token);
     if (!serviceRegistrationList?.length) {
@@ -387,11 +402,14 @@ export class DiContainer implements IInitableDiContainer {
       throw new RequestScopeResolutionError(token);
     }
 
-    const services: T[] = [];
+    const services: IResolveAllResult<T>[] = [];
 
     for (const serviceRegistration of serviceRegistrationList) {
       if (serviceRegistration.isResolved) {
-        services.push(serviceRegistration.getInstance());
+        services.push({
+          registration: serviceRegistration,
+          instance: serviceRegistration.getInstance(),
+        });
       } else {
         if (!serviceRegistration.factory) {
           continue;
@@ -404,7 +422,10 @@ export class DiContainer implements IInitableDiContainer {
 
         serviceRegistration.setInstance(serviceInstance);
 
-        services.push(serviceInstance);
+        services.push({
+          registration: serviceRegistration,
+          instance: serviceInstance,
+        });
       }
     }
 
@@ -444,14 +465,16 @@ export class DiContainer implements IInitableDiContainer {
     return serviceInstance;
   }
 
-  private async getTransientAll<T>(token: TServiceToken): Promise<T[]> {
+  private async getTransientAll<T>(
+    token: TServiceToken
+  ): Promise<IResolveAllResult<T>[]> {
     const serviceRegistrationList =
       this._diConfigurator.transientServiceRegistry.get(token);
     if (!serviceRegistrationList?.length) {
       return [];
     }
 
-    const services: T[] = [];
+    const services: IResolveAllResult<T>[] = [];
 
     for (const serviceRegistration of serviceRegistrationList) {
       const serviceInstance = await serviceRegistration.factory(this);
@@ -459,7 +482,10 @@ export class DiContainer implements IInitableDiContainer {
         await (serviceInstance as IOnConstruct).onConstruct();
       }
 
-      services.push(serviceInstance);
+      services.push({
+        registration: serviceRegistration,
+        instance: serviceInstance,
+      });
     }
 
     return services;

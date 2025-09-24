@@ -1723,7 +1723,7 @@ describe("DIContainer | Tag Functionality", () => {
         assert.equal(factoryCallCount, 2);
 
         // Services should include both registrations
-        const serviceNames = services.map((s: any) => s.name);
+        const serviceNames = services.map((s: any) => s.instance.name);
         assert.ok(serviceNames.includes("primary-service"));
         assert.ok(serviceNames.includes("secondary-service"));
       });
@@ -1764,7 +1764,7 @@ describe("DIContainer | Tag Functionality", () => {
           assert.equal(services.length, 2);
           assert.equal(factoryCallCount, 2);
 
-          const serviceNames = services.map((s: any) => s.name);
+          const serviceNames = services.map((s: any) => s.instance.name);
           assert.ok(serviceNames.includes("scoped-primary"));
           assert.ok(serviceNames.includes("scoped-secondary"));
         });
@@ -1805,7 +1805,7 @@ describe("DIContainer | Tag Functionality", () => {
         assert.equal(services.length, 2);
         assert.equal(factoryCallCount, 2);
 
-        const serviceNames = services.map((s: any) => s.name);
+        const serviceNames = services.map((s: any) => s.instance.name);
         assert.ok(serviceNames.includes("transient-primary"));
         assert.ok(serviceNames.includes("transient-secondary"));
       });
@@ -1825,7 +1825,7 @@ describe("DIContainer | Tag Functionality", () => {
         assert.equal(firstCall.length, 1);
         assert.equal(secondCall.length, 1);
         assert.equal(factoryCallCount, 2);
-        assert.notStrictEqual(firstCall[0], secondCall[0]);
+        assert.notStrictEqual(firstCall[0].instance, secondCall[0].instance);
       });
 
       it("should return same singleton instances on multiple resolveAll calls", async () => {
@@ -1843,7 +1843,7 @@ describe("DIContainer | Tag Functionality", () => {
         assert.equal(firstCall.length, 1);
         assert.equal(secondCall.length, 1);
         assert.equal(factoryCallCount, 1);
-        assert.strictEqual(firstCall[0], secondCall[0]);
+        assert.strictEqual(firstCall[0].instance, secondCall[0].instance);
       });
 
       it("should return same scoped instances on multiple resolveAll calls", async () => {
@@ -1862,7 +1862,7 @@ describe("DIContainer | Tag Functionality", () => {
           assert.equal(firstCall.length, 1);
           assert.equal(secondCall.length, 1);
           assert.equal(factoryCallCount, 1);
-          assert.strictEqual(firstCall[0], secondCall[0]);
+          assert.strictEqual(firstCall[0].instance, secondCall[0].instance);
         });
       });
     });
@@ -2078,8 +2078,8 @@ describe("DIContainer | Tag Functionality", () => {
         assert.equal(result1.length, 1);
         assert.equal(result2.length, 1);
         assert.equal(result3.length, 1);
-        assert.strictEqual(result1[0], result2[0]);
-        assert.strictEqual(result2[0], result3[0]);
+        assert.strictEqual(result1[0].instance, result2[0].instance);
+        assert.strictEqual(result2[0].instance, result3[0].instance);
       });
 
       it("should handle concurrent resolveAll calls for scoped services within same scope", async () => {
@@ -2105,8 +2105,8 @@ describe("DIContainer | Tag Functionality", () => {
           assert.equal(result1.length, 1);
           assert.equal(result2.length, 1);
           assert.equal(result3.length, 1);
-          assert.strictEqual(result1[0], result2[0]);
-          assert.strictEqual(result2[0], result3[0]);
+          assert.strictEqual(result1[0].instance, result2[0].instance);
+          assert.strictEqual(result2[0].instance, result3[0].instance);
         });
       });
     });
@@ -2130,7 +2130,7 @@ describe("DIContainer | Tag Functionality", () => {
 
         const services = await diContainer.resolveAll(EMPTY_REGISTRY_TOKEN);
         assert.equal(services.length, 1);
-        assert.deepEqual(services[0], { name: "valid-service" });
+        assert.deepEqual(services[0].instance, { name: "valid-service" });
       });
     });
 
@@ -2164,15 +2164,15 @@ describe("DIContainer | Tag Functionality", () => {
         assert.equal(symbolServices.length, 1);
         assert.equal(classServices.length, 1);
 
-        assert.deepEqual(stringServices[0], {
+        assert.deepEqual(stringServices[0].instance, {
           type: "string",
           name: "string-service",
         });
-        assert.deepEqual(symbolServices[0], {
+        assert.deepEqual(symbolServices[0].instance, {
           type: "symbol",
           name: "symbol-service",
         });
-        assert.ok(classServices[0] instanceof TestService);
+        assert.ok(classServices[0].instance instanceof TestService);
       });
     });
 
