@@ -1,4 +1,4 @@
-import { BaseApiratorjsError } from "./errors";
+import { UnknownTokenTypeError } from "./errors";
 import {
   TClassType,
   TNormalizedServiceToken,
@@ -24,7 +24,7 @@ export function tokenToType(token: TServiceToken): TServiceTokenType {
     return "class";
   }
 
-  throw new BaseApiratorjsError("Unknown token type");
+  throw new UnknownTokenTypeError(token);
 }
 
 export function normalizeTagToCompatibleFormat(tag?: string): string {

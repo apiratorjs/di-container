@@ -1,7 +1,7 @@
-import { TServiceToken } from "./types";
+import { TLifetime, TServiceToken } from "./types";
 import { normalizeToken } from "./utils";
 
-export class BaseApiratorjsError extends Error {
+export class DependencyInjectionError extends Error {
   constructor(message: string, public readonly cause?: string) {
     super(message);
     this.name = this.constructor.name;
@@ -10,7 +10,7 @@ export class BaseApiratorjsError extends Error {
   }
 }
 
-export class CircularDependencyError extends BaseApiratorjsError {
+export class CircularDependencyError extends DependencyInjectionError {
   constructor(token: TServiceToken, public readonly chain: string[]) {
     const normalizedToken = normalizeToken(token);
     super(
@@ -20,7 +20,7 @@ export class CircularDependencyError extends BaseApiratorjsError {
   }
 }
 
-export class UnregisteredDependencyError extends BaseApiratorjsError {
+export class UnregisteredDependencyError extends DependencyInjectionError {
   constructor(token: TServiceToken, public readonly cause?: string) {
     const normalizedToken = normalizeToken(token);
     super(
@@ -30,7 +30,7 @@ export class UnregisteredDependencyError extends BaseApiratorjsError {
   }
 }
 
-export class RequestScopeResolutionError extends BaseApiratorjsError {
+export class RequestScopeResolutionError extends DependencyInjectionError {
   constructor(token: TServiceToken, public readonly cause?: string) {
     const normalizedToken = normalizeToken(token);
     super(
@@ -40,7 +40,7 @@ export class RequestScopeResolutionError extends BaseApiratorjsError {
   }
 }
 
-export class CrossLifecycleRegistrationError extends BaseApiratorjsError {
+export class CrossLifecycleRegistrationError extends DependencyInjectionError {
   constructor(
     token: TServiceToken,
     public readonly existingLifecycle: string,
@@ -52,5 +52,18 @@ export class CrossLifecycleRegistrationError extends BaseApiratorjsError {
       `Cannot register token '${normalizedToken.toString()}' as ${attemptedLifecycle} because it is already registered as ${existingLifecycle}. Cross-lifecycle registration is not allowed.`,
       cause
     );
+  }
+}
+
+export class UnknownTokenTypeError extends DependencyInjectionError {
+  constructor(token: TServiceToken) {
+    const normalizedToken = normalizeToken(token);
+    super(`Unknown token type for token '${normalizedToken.toString()}'`);
+  }
+}
+
+export class UnknownLifetimeError extends DependencyInjectionError {
+  constructor(lifetime: TLifetime) {
+    super(`Unknown lifetime: ${lifetime}`);
   }
 }

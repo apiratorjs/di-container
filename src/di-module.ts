@@ -1,3 +1,4 @@
+import { UnknownLifetimeError } from "./errors";
 import {
   IDiConfigurator,
   IDiModule,
@@ -73,7 +74,7 @@ export class DiModule implements IDiModule {
         break;
 
       default:
-        throw new Error(`Unknown lifetime: ${lifetime}`);
+        throw new UnknownLifetimeError(lifetime);
     }
   }
 }
