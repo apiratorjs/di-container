@@ -34,13 +34,13 @@ export interface IDiContainer {
 
   resolveRequired<T>(token: TServiceToken<T>, tag?: string): Promise<T>;
 
-  resolveAll<T>(token: TServiceToken<T>): Promise<T[]>;
+  resolveAll<T>(token: TServiceToken<T>): Promise<IResolveAllResult<T>[]>;
 
   resolveTagged<T>(tag: string): Promise<T | undefined>;
 
   resolveTaggedRequired<T>(tag: string): Promise<T>;
 
-  resolveAllTagged<T>(tag: string): Promise<T[]>;
+  resolveAllTagged(tag: string): Promise<IResolveAllResult[]>;
 
   runWithNewRequestScope(
     callback: (diContainer: IDiContainer) => Promise<any> | any,
@@ -52,6 +52,11 @@ export interface IDiContainer {
   dispose(): Promise<void>;
 
   getDiscoveryService(): IDiDiscoveryService;
+}
+
+export interface IResolveAllResult<T = any> {
+  registration: IServiceRegistration<T>;
+  instance: T;
 }
 
 export interface IInitableDiContainer extends IDiContainer {
