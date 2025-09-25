@@ -67,3 +67,18 @@ export class UnknownLifetimeError extends DependencyInjectionError {
     super(`Unknown lifetime: ${lifetime}`);
   }
 }
+
+export class LifecycleDependencyViolationError extends DependencyInjectionError {
+  constructor(
+    public readonly dependentToken: TServiceToken,
+    public readonly dependentLifetime: TLifetime,
+    public readonly dependencyToken: TServiceToken,
+    public readonly dependencyLifetime: TLifetime
+  ) {
+    const normalizedDependentToken = normalizeToken(dependentToken);
+    const normalizedDependencyToken = normalizeToken(dependencyToken);
+    super(
+      `Lifecycle dependency violation: ${dependentLifetime} service '${normalizedDependentToken.toString()}' cannot depend on ${dependencyLifetime} service '${normalizedDependencyToken.toString()}'. Singletons cannot depend on scoped services.`
+    );
+  }
+}

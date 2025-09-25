@@ -4,6 +4,7 @@ import {
   IInitableDiContainer,
   IOnConstruct,
   IOnDispose,
+  TLifetime,
   TServiceToken,
 } from "./types";
 import { DiDiscoveryService } from "./di-discovery-service";
@@ -14,6 +15,7 @@ import {
 import { Mutex } from "@apiratorjs/locking";
 import {
   CircularDependencyError,
+  LifecycleDependencyViolationError,
   RequestScopeResolutionError,
   UnregisteredDependencyError,
 } from "./errors";
@@ -25,6 +27,10 @@ export class DiContainer implements IInitableDiContainer {
   private readonly _resolutionChains = new Map<
     AsyncContextStore | undefined,
     Set<TServiceToken>
+  >();
+  private readonly _lifecycleResolutionContext = new Map<
+    AsyncContextStore | undefined,
+    Map<TServiceToken, TLifetime>
   >();
 
   public constructor(private readonly _diConfigurator: DiConfigurator) {}
@@ -40,6 +46,10 @@ export class DiContainer implements IInitableDiContainer {
     return await mutex.runExclusive(async () => {
       try {
         this.addToResolutionChain(token);
+
+        if (this._diConfigurator.requestScopeServiceRegistry.has(token)) {
+          this.checkForLifecycleDependencyViolation(token, "scoped");
+        }
 
         return (
           (await this.tryGetSingleton<T>(token, tag)) ??
@@ -75,6 +85,11 @@ export class DiContainer implements IInitableDiContainer {
     return await mutex.runExclusive(async () => {
       try {
         this.addToResolutionChain(token);
+
+        // Check for lifecycle dependency violations before trying to resolve
+        if (this._diConfigurator.requestScopeServiceRegistry.has(token)) {
+          this.checkForLifecycleDependencyViolation(token, "scoped");
+        }
 
         const singletonServices = await this.getSingletonAll<T>(token);
         if (singletonServices.length > 0) {
@@ -286,14 +301,19 @@ export class DiContainer implements IInitableDiContainer {
       return;
     }
 
-    const serviceInstance = await serviceRegistration.factory(this);
-    if ((serviceInstance as IOnConstruct)?.onConstruct) {
-      await (serviceInstance as IOnConstruct).onConstruct();
+    try {
+      this.addToLifecycleContext(token, "singleton");
+      const serviceInstance = await serviceRegistration.factory(this);
+      if ((serviceInstance as IOnConstruct)?.onConstruct) {
+        await (serviceInstance as IOnConstruct).onConstruct();
+      }
+
+      serviceRegistration.setInstance(serviceInstance);
+
+      return serviceInstance;
+    } finally {
+      this.removeFromLifecycleContext(token);
     }
-
-    serviceRegistration.setInstance(serviceInstance);
-
-    return serviceInstance;
   }
 
   private async getSingletonAll<T>(token: TServiceToken): Promise<T[]> {
@@ -365,14 +385,19 @@ export class DiContainer implements IInitableDiContainer {
       return;
     }
 
-    const serviceInstance = await serviceRegistration.factory(this);
-    if ((serviceInstance as IOnConstruct)?.onConstruct) {
-      await (serviceInstance as IOnConstruct).onConstruct();
+    try {
+      this.addToLifecycleContext(token, "scoped");
+      const serviceInstance = await serviceRegistration.factory(this);
+      if ((serviceInstance as IOnConstruct)?.onConstruct) {
+        await (serviceInstance as IOnConstruct).onConstruct();
+      }
+
+      serviceRegistration.setInstance(serviceInstance);
+
+      return serviceInstance;
+    } finally {
+      this.removeFromLifecycleContext(token);
     }
-
-    serviceRegistration.setInstance(serviceInstance);
-
-    return serviceInstance;
   }
 
   private async getScopedAll<T>(token: TServiceToken): Promise<T[]> {
@@ -436,12 +461,17 @@ export class DiContainer implements IInitableDiContainer {
       return;
     }
 
-    const serviceInstance = await serviceRegistration.factory(this);
-    if ((serviceInstance as IOnConstruct)?.onConstruct) {
-      await (serviceInstance as IOnConstruct).onConstruct();
-    }
+    try {
+      this.addToLifecycleContext(token, "transient");
+      const serviceInstance = await serviceRegistration.factory(this);
+      if ((serviceInstance as IOnConstruct)?.onConstruct) {
+        await (serviceInstance as IOnConstruct).onConstruct();
+      }
 
-    return serviceInstance;
+      return serviceInstance;
+    } finally {
+      this.removeFromLifecycleContext(token);
+    }
   }
 
   private async getTransientAll<T>(token: TServiceToken): Promise<T[]> {
@@ -498,6 +528,53 @@ export class DiContainer implements IInitableDiContainer {
       );
 
       throw new CircularDependencyError(token, cycle);
+    }
+  }
+
+  // ============================
+  // Lifecycle dependency validation
+  // ============================
+
+  private getCurrentLifecycleContext(): Map<TServiceToken, TLifetime> {
+    const currentScope = this.getRequestScopeContext();
+    if (!this._lifecycleResolutionContext.has(currentScope)) {
+      this._lifecycleResolutionContext.set(
+        currentScope,
+        new Map<TServiceToken, TLifetime>()
+      );
+    }
+    return this._lifecycleResolutionContext.get(currentScope)!;
+  }
+
+  private addToLifecycleContext(
+    token: TServiceToken,
+    lifetime: TLifetime
+  ): void {
+    this.getCurrentLifecycleContext().set(token, lifetime);
+  }
+
+  private removeFromLifecycleContext(token: TServiceToken): void {
+    this.getCurrentLifecycleContext().delete(token);
+  }
+
+  private checkForLifecycleDependencyViolation(
+    token: TServiceToken,
+    requestedLifetime: TLifetime
+  ): void {
+    const currentContext = this.getCurrentLifecycleContext();
+
+    for (const [
+      dependentToken,
+      dependentLifetime,
+    ] of currentContext.entries()) {
+      if (dependentLifetime === "singleton" && requestedLifetime === "scoped") {
+        throw new LifecycleDependencyViolationError(
+          dependentToken,
+          dependentLifetime,
+          token,
+          requestedLifetime
+        );
+      }
     }
   }
 }

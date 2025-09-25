@@ -2729,3 +2729,196 @@ describe("DIContainer | Tag Functionality", () => {
     });
   });
 });
+
+describe("DIContainer | Lifecycle Dependency Validation", () => {
+  const SINGLETON_TOKEN: TServiceToken = "SINGLETON_TOKEN";
+  const SCOPED_TOKEN: TServiceToken = "SCOPED_TOKEN";
+  const TRANSIENT_TOKEN: TServiceToken = "TRANSIENT_TOKEN";
+
+  let diConfigurator: DiConfigurator;
+  let diContainer: IDiContainer;
+
+  const runScope = async (callback: () => Promise<any>) => {
+    return await diContainer.runWithNewRequestScope(
+      callback,
+      new AsyncContextStore()
+    );
+  };
+
+  beforeEach(async () => {
+    diConfigurator = new DiConfigurator();
+  });
+
+  afterEach(async () => {
+    if (diContainer) {
+      await diContainer.dispose();
+    }
+  });
+
+  it("should throw LifecycleDependencyViolationError when singleton depends on scoped service", async () => {
+    diConfigurator.addScoped(SCOPED_TOKEN, async () => {
+      return { name: "scoped-service" };
+    });
+
+    diConfigurator.addSingleton(SINGLETON_TOKEN, async (container) => {
+      const scopedDep = await container.resolve(SCOPED_TOKEN);
+      return { name: "singleton-service", dependency: scopedDep };
+    });
+
+    diContainer = await diConfigurator.build();
+
+    await assert.rejects(
+      diContainer.resolve(SINGLETON_TOKEN),
+      (err: Error) => {
+        assert.match(
+          err.message,
+          /Lifecycle dependency violation: singleton service .* cannot depend on scoped service .* Singletons cannot depend on scoped services\./
+        );
+        return true;
+      }
+    );
+  });
+
+  it("should throw LifecycleDependencyViolationError when singleton depends on scoped service via resolveRequired", async () => {
+    diConfigurator.addScoped(SCOPED_TOKEN, async () => {
+      return { name: "scoped-service" };
+    });
+
+    diConfigurator.addSingleton(SINGLETON_TOKEN, async (container) => {
+      const scopedDep = await container.resolveRequired(SCOPED_TOKEN);
+      return { name: "singleton-service", dependency: scopedDep };
+    });
+
+    diContainer = await diConfigurator.build();
+
+    await assert.rejects(
+      diContainer.resolve(SINGLETON_TOKEN),
+      (err: Error) => {
+        assert.match(
+          err.message,
+          /Lifecycle dependency violation: singleton service .* cannot depend on scoped service .* Singletons cannot depend on scoped services\./
+        );
+        return true;
+      }
+    );
+  });
+
+  it("should throw LifecycleDependencyViolationError when singleton depends on scoped service via resolveAll", async () => {
+    diConfigurator.addScoped(SCOPED_TOKEN, async () => {
+      return { name: "scoped-service" };
+    });
+
+    diConfigurator.addSingleton(SINGLETON_TOKEN, async (container) => {
+      const scopedDeps = await container.resolveAll(SCOPED_TOKEN);
+      return { name: "singleton-service", dependencies: scopedDeps };
+    });
+
+    diContainer = await diConfigurator.build();
+
+    await assert.rejects(
+      diContainer.resolve(SINGLETON_TOKEN),
+      (err: Error) => {
+        assert.match(
+          err.message,
+          /Lifecycle dependency violation: singleton service .* cannot depend on scoped service .* Singletons cannot depend on scoped services\./
+        );
+        return true;
+      }
+    );
+  });
+
+  it("should allow singleton to depend on transient service", async () => {
+    diConfigurator.addTransient(TRANSIENT_TOKEN, async () => {
+      return { name: "transient-service" };
+    });
+
+    diConfigurator.addSingleton(SINGLETON_TOKEN, async (container) => {
+      const transientDep = await container.resolve(TRANSIENT_TOKEN);
+      return { name: "singleton-service", dependency: transientDep };
+    });
+
+    diContainer = await diConfigurator.build();
+
+    const singleton = await diContainer.resolve(SINGLETON_TOKEN);
+    assert.ok(singleton);
+    assert.deepEqual(singleton, {
+      name: "singleton-service",
+      dependency: { name: "transient-service" }
+    });
+  });
+
+  it("should allow transient to depend on scoped service", async () => {
+    diConfigurator.addScoped(SCOPED_TOKEN, async () => {
+      return { name: "scoped-service" };
+    });
+
+    diConfigurator.addTransient(TRANSIENT_TOKEN, async (container) => {
+      const scopedDep = await container.resolve(SCOPED_TOKEN);
+      return { name: "transient-service", dependency: scopedDep };
+    });
+
+    diContainer = await diConfigurator.build();
+
+    await runScope(async () => {
+      const transient = await diContainer.resolve(TRANSIENT_TOKEN);
+      assert.ok(transient);
+      assert.deepEqual(transient, {
+        name: "transient-service",
+        dependency: { name: "scoped-service" }
+      });
+    });
+  });
+
+  it("should allow scoped service to depend on singleton", async () => {
+    diConfigurator.addSingleton(SINGLETON_TOKEN, async () => {
+      return { name: "singleton-service" };
+    });
+
+    diConfigurator.addScoped(SCOPED_TOKEN, async (container) => {
+      const singletonDep = await container.resolve(SINGLETON_TOKEN);
+      return { name: "scoped-service", dependency: singletonDep };
+    });
+
+    diContainer = await diConfigurator.build();
+
+    await runScope(async () => {
+      const scoped = await diContainer.resolve(SCOPED_TOKEN);
+      assert.ok(scoped);
+      assert.deepEqual(scoped, {
+        name: "scoped-service",
+        dependency: { name: "singleton-service" }
+      });
+    });
+  });
+
+  it("should detect lifecycle violations in nested dependencies", async () => {
+    const INTERMEDIATE_TOKEN: TServiceToken = "INTERMEDIATE_TOKEN";
+
+    diConfigurator.addScoped(SCOPED_TOKEN, async () => {
+      return { name: "scoped-service" };
+    });
+
+    diConfigurator.addSingleton(INTERMEDIATE_TOKEN, async (container) => {
+      const scopedDep = await container.resolve(SCOPED_TOKEN);
+      return { name: "intermediate-service", dependency: scopedDep };
+    });
+
+    diConfigurator.addSingleton(SINGLETON_TOKEN, async (container) => {
+      const intermediateDep = await container.resolve(INTERMEDIATE_TOKEN);
+      return { name: "singleton-service", dependency: intermediateDep };
+    });
+
+    diContainer = await diConfigurator.build();
+
+    await assert.rejects(
+      diContainer.resolve(SINGLETON_TOKEN),
+      (err: Error) => {
+        assert.match(
+          err.message,
+          /Lifecycle dependency violation: singleton service .* cannot depend on scoped service .* Singletons cannot depend on scoped services\./
+        );
+        return true;
+      }
+    );
+  });
+});
