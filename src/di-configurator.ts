@@ -65,7 +65,7 @@ export class DiConfigurator implements IDiConfigurator {
     const serviceRegistrationList =
       this._singletonServiceRegistry.get(token) ?? [];
 
-    const hasServiceRegistration = serviceRegistrationList.some(
+    const existingRegistrationIndex = serviceRegistrationList.findIndex(
       (serviceRegistration) => {
         return (
           normalizeTagToCompatibleFormat(serviceRegistration.tag) ===
@@ -74,8 +74,9 @@ export class DiConfigurator implements IDiConfigurator {
       }
     );
 
-    if (hasServiceRegistration) {
-      return this;
+    if (existingRegistrationIndex !== -1) {
+      // Remove existing registration (last registration wins)
+      serviceRegistrationList.splice(existingRegistrationIndex, 1);
     }
 
     const serviceRegistration = new ServiceRegistration({
@@ -105,7 +106,7 @@ export class DiConfigurator implements IDiConfigurator {
     const serviceRegistrationList =
       this._requestScopeServiceRegistry.get(token) ?? [];
 
-    const hasServiceRegistration = serviceRegistrationList.some(
+    const existingRegistrationIndex = serviceRegistrationList.findIndex(
       (serviceRegistration) => {
         return (
           normalizeTagToCompatibleFormat(serviceRegistration.tag) ===
@@ -114,8 +115,9 @@ export class DiConfigurator implements IDiConfigurator {
       }
     );
 
-    if (hasServiceRegistration) {
-      return this;
+    if (existingRegistrationIndex !== -1) {
+      // Remove existing registration (last registration wins)
+      serviceRegistrationList.splice(existingRegistrationIndex, 1);
     }
 
     const serviceRegistration = new ScopedServiceRegistration({
@@ -145,7 +147,7 @@ export class DiConfigurator implements IDiConfigurator {
     const serviceRegistrationList =
       this._transientServiceRegistry.get(token) ?? [];
 
-    const hasServiceRegistration = serviceRegistrationList.some(
+    const existingRegistrationIndex = serviceRegistrationList.findIndex(
       (serviceRegistration) => {
         return (
           normalizeTagToCompatibleFormat(serviceRegistration.tag) ===
@@ -154,8 +156,9 @@ export class DiConfigurator implements IDiConfigurator {
       }
     );
 
-    if (hasServiceRegistration) {
-      return this;
+    if (existingRegistrationIndex !== -1) {
+      // Remove existing registration (last registration wins)
+      serviceRegistrationList.splice(existingRegistrationIndex, 1);
     }
 
     const serviceRegistration = new ServiceRegistration({
@@ -206,7 +209,7 @@ export class DiConfigurator implements IDiConfigurator {
 
   private checkForCrossLifecycleRegistration(
     token: TServiceToken,
-    attemptedLifecycle: "singleton" | "scoped" | "transient",
+    attemptedLifecycle: TLifetime,
     tag: string
   ): void {
     const registries: {

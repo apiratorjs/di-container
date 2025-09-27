@@ -1147,7 +1147,7 @@ describe("DIContainer | Service Override", () => {
     await diContainer.dispose();
   });
 
-  it("should use only the first registered implementation for singleton services", async () => {
+  it("should use the last registered implementation for singleton services", async () => {
     diConfigurator.addSingleton(SINGLETON_TOKEN, async () => {
       return { name: "first-singleton-service" };
     });
@@ -1157,10 +1157,10 @@ describe("DIContainer | Service Override", () => {
     });
 
     const instance = await diContainer.resolve(SINGLETON_TOKEN);
-    assert.deepEqual(instance, { name: "first-singleton-service" });
+    assert.deepEqual(instance, { name: "overridden-singleton-service" });
   });
 
-  it("should use only the first registered implementation for scoped services", async () => {
+  it("should use the last registered implementation for scoped services", async () => {
     diConfigurator.addScoped(SCOPED_TOKEN, async () => {
       return { name: "first-scoped-service" };
     });
@@ -1171,11 +1171,11 @@ describe("DIContainer | Service Override", () => {
 
     await runScope(async () => {
       const instance = await diContainer.resolve(SCOPED_TOKEN);
-      assert.deepEqual(instance, { name: "first-scoped-service" });
+      assert.deepEqual(instance, { name: "overridden-scoped-service" });
     });
   });
 
-  it("should use only the first registered implementation for transient services", async () => {
+  it("should use the last registered implementation for transient services", async () => {
     diConfigurator.addTransient(TRANSIENT_TOKEN, async () => {
       return { name: "first-transient-service" };
     });
@@ -1185,7 +1185,7 @@ describe("DIContainer | Service Override", () => {
     });
 
     const instance = await diContainer.resolve(TRANSIENT_TOKEN);
-    assert.deepEqual(instance, { name: "first-transient-service" });
+    assert.deepEqual(instance, { name: "overridden-transient-service" });
   });
 });
 
@@ -1518,7 +1518,7 @@ describe("DIContainer | Tag Functionality", () => {
       assert.deepEqual(service, { name: "no-tag-service" });
     });
 
-    it("should not conflict between explicit 'default' tag and no tag", async () => {
+    it("should override between explicit 'default' tag and no tag (last registration wins)", async () => {
       diConfigurator.addSingleton(
         TAGGED_SINGLETON_TOKEN,
         async () => ({ name: "explicit-default-service" }),
@@ -1526,7 +1526,7 @@ describe("DIContainer | Tag Functionality", () => {
         "default"
       );
 
-      // This should not register because "default" tag already exists
+      // This should override the previous registration since both normalize to "default"
       diConfigurator.addSingleton(
         TAGGED_SINGLETON_TOKEN,
         async () => ({ name: "implicit-default-service" })
@@ -1534,13 +1534,13 @@ describe("DIContainer | Tag Functionality", () => {
       );
 
       const service = await diContainer.resolve(TAGGED_SINGLETON_TOKEN);
-      // Should get the first registered service (explicit default)
-      assert.deepEqual(service, { name: "explicit-default-service" });
+      // Should get the last registered service (implicit default)
+      assert.deepEqual(service, { name: "implicit-default-service" });
     });
   });
 
-  describe("Service Override Prevention with Tags", () => {
-    it("should not override existing service registration with same token and tag", async () => {
+  describe("Service Override Behavior with Tags", () => {
+    it("should override existing service registration with same token and tag (last registration wins)", async () => {
       diConfigurator.addSingleton(
         TAGGED_SINGLETON_TOKEN,
         async () => ({ name: "first-service" }),
@@ -1559,7 +1559,7 @@ describe("DIContainer | Tag Functionality", () => {
         TAGGED_SINGLETON_TOKEN,
         "same-tag"
       );
-      assert.deepEqual(service, { name: "first-service" });
+      assert.deepEqual(service, { name: "second-service" });
     });
 
     it("should allow different services with same token but different tags", async () => {
