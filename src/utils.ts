@@ -5,6 +5,7 @@ import {
   TServiceToken,
   TServiceTokenType,
 } from "./types";
+import { DEFAULT_TAG } from "./constants";
 
 export function tokenToString(token: TServiceToken): string {
   if (typeof token === "string") return token;
@@ -29,7 +30,7 @@ export function tokenToType(token: TServiceToken): TServiceTokenType {
 
 export function normalizeTagToCompatibleFormat(tag?: string): string {
   if (!tag) {
-    return "default";
+    return DEFAULT_TAG;
   }
 
   return tag.toLowerCase();

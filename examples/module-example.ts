@@ -1,4 +1,4 @@
-import { DiConfigurator, DiModule, IDiContainer } from "../src";
+import { DiConfigurator, IDiContainer, IDiModule } from "../src";
 
 interface ILogger {
   log(message: string): void;
@@ -41,58 +41,39 @@ const LOGGER = Symbol("LOGGER");
 const USER_SERVICE = Symbol("USER_SERVICE");
 const AUTH_SERVICE = Symbol("AUTH_SERVICE");
 
-const LoggingModule = DiModule.create({
-  providers: [
-    {
-      token: LOGGER,
-      useFactory: () => new ConsoleLogger(),
-      lifetime: "singleton",
-    },
-  ],
-});
+class LoggingModule implements IDiModule {
+  public register(configurator: DiConfigurator) {
+    configurator.addSingleton(LOGGER, () => new ConsoleLogger());
+  }
+}
 
-const AuthModule = DiModule.create({
-  imports: [LoggingModule],
-  providers: [
-    {
-      token: AUTH_SERVICE,
-      useFactory: async (container: IDiContainer) => {
-        const logger = await container.resolveRequired<ILogger>(LOGGER);
-        return new AuthServiceImpl(logger);
-      },
-      lifetime: "singleton",
-    },
-  ],
-});
+class AuthModule {
+  public register(configurator: DiConfigurator) {
+    configurator.addSingleton(AUTH_SERVICE, async (container: IDiContainer) => {
+      const logger = await container.resolveRequired<ILogger>(LOGGER);
+      return new AuthServiceImpl(logger);
+    });
+  }
+}
 
-const UserModule = DiModule.create({
-  imports: [LoggingModule, AuthModule],
-  providers: [
-    {
-      token: USER_SERVICE,
-      useFactory: async (container: IDiContainer) => {
-        const logger = await container.resolveRequired<ILogger>(LOGGER);
-        const authService = await container.resolveRequired<IAuthService>(
-          AUTH_SERVICE
-        );
-        return new UserServiceImpl(logger, authService);
-      },
-      lifetime: "singleton",
-    },
-  ],
-});
-
-const AppModule = DiModule.create({
-  imports: [UserModule],
-  providers: [
-    // We can add additional app-specific services here
-  ],
-});
+class UserModule {
+  public register(configurator: DiConfigurator) {
+    configurator.addSingleton(USER_SERVICE, async (container: IDiContainer) => {
+      const logger = await container.resolveRequired<ILogger>(LOGGER);
+      const authService = await container.resolveRequired<IAuthService>(
+        AUTH_SERVICE
+      );
+      return new UserServiceImpl(logger, authService);
+    });
+  }
+}
 
 async function main() {
   const configurator = new DiConfigurator();
 
-  configurator.addModule(AppModule);
+  configurator.addModule(new LoggingModule());
+  configurator.addModule(new AuthModule());
+  configurator.addModule(new UserModule());
 
   const container = await configurator.build();
 

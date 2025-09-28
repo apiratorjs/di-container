@@ -3,7 +3,7 @@ import {
   IServiceRegistration,
   ISingletonOptions,
   TClassType,
-  TLifetime,
+  ELifetime,
   TServiceToken,
   TServiceTokenType,
   TUseFactory,
@@ -13,7 +13,7 @@ import { tokenToType } from "./utils";
 interface IServiceRegistrationProps<T = any> {
   token: TServiceToken<T>;
   factory: TUseFactory<T>;
-  lifetime: TLifetime;
+  lifetime: ELifetime;
   tag: string;
   singletonOptions?: ISingletonOptions | undefined;
 }
@@ -22,7 +22,7 @@ export class ServiceRegistration<T = any> implements IServiceRegistration<T> {
   public readonly tokenType: TServiceTokenType;
   public readonly token: TServiceToken<T>;
   public readonly factory: TUseFactory<T>;
-  public readonly lifetime: TLifetime;
+  public readonly lifetime: ELifetime;
   public readonly tag: string;
   public readonly singletonOptions?: ISingletonOptions | undefined;
   public readonly metatype?: TClassType<T> | undefined;

@@ -1,7 +1,12 @@
 import { afterEach, beforeEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { DiDiscoveryService } from "../src/di-discovery-service";
-import { IServiceRegistration, TLifetime, IDiConfigurator, IDiContainer } from "../src/types";
+import {
+  IServiceRegistration,
+  ELifetime,
+  IDiConfigurator,
+  IDiContainer,
+} from "../src/types";
 import { DiConfigurator } from "../src/di-configurator";
 import { ServiceRegistration } from "../src/service-registration";
 import { DiContainer } from "../src";
@@ -17,32 +22,32 @@ describe("DiDiscoveryService", () => {
     mockServiceRegistrations = [
       new ServiceRegistration({
         token: "SERVICE_A",
-        lifetime: "singleton",
+        lifetime: ELifetime.Singleton,
         factory: () => ({ name: "ServiceA" }),
         tag: "database",
       }),
       new ServiceRegistration({
         token: "SERVICE_B",
-        lifetime: "scoped",
+        lifetime: ELifetime.Scoped,
         factory: () => ({ name: "ServiceB" }),
         tag: "api",
       }),
       new ServiceRegistration({
         token: Symbol("SERVICE_C"),
-        lifetime: "transient",
+        lifetime: ELifetime.Transient,
         factory: () => ({ name: "ServiceC" }),
         tag: "database",
       }),
       new ServiceRegistration({
         token: serviceDClass,
-        lifetime: "singleton",
+        lifetime: ELifetime.Singleton,
         factory: () => new serviceDClass(),
         tag: "business",
         singletonOptions: { eager: true },
       }),
       new ServiceRegistration({
         token: "SERVICE_E",
-        lifetime: "scoped",
+        lifetime: ELifetime.Scoped,
         factory: () => ({ name: "ServiceE" }),
         tag: "api",
       }),
@@ -178,7 +183,7 @@ describe("DiDiscoveryService", () => {
       // Add another service with same token for testing
       const duplicateService = new ServiceRegistration({
         token: "SERVICE_A",
-        lifetime: "transient",
+        lifetime: ELifetime.Transient,
         factory: () => ({ name: "ServiceA_Duplicate" }),
         tag: "duplicate",
       });
@@ -203,33 +208,37 @@ describe("DiDiscoveryService", () => {
 
   describe("getServicesByLifetime", () => {
     it("should return singleton services", () => {
-      const result = discoveryService.getServicesByLifetime("singleton");
+      const result = discoveryService.getServicesByLifetime(
+        ELifetime.Singleton
+      );
 
       assert.strictEqual(result.length, 2);
       result.forEach((service) => {
-        assert.strictEqual(service.lifetime, "singleton");
+        assert.strictEqual(service.lifetime, ELifetime.Singleton);
       });
     });
 
     it("should return scoped services", () => {
-      const result = discoveryService.getServicesByLifetime("scoped");
+      const result = discoveryService.getServicesByLifetime(ELifetime.Scoped);
 
       assert.strictEqual(result.length, 2);
       result.forEach((service) => {
-        assert.strictEqual(service.lifetime, "scoped");
+        assert.strictEqual(service.lifetime, ELifetime.Scoped);
       });
     });
 
     it("should return transient services", () => {
-      const result = discoveryService.getServicesByLifetime("transient");
+      const result = discoveryService.getServicesByLifetime(
+        ELifetime.Transient
+      );
 
       assert.strictEqual(result.length, 1);
-      assert.strictEqual(result[0].lifetime, "transient");
+      assert.strictEqual(result[0].lifetime, ELifetime.Transient);
     });
 
     it("should return empty array for non-existent lifetime", () => {
       const result = discoveryService.getServicesByLifetime(
-        "invalid" as TLifetime
+        "invalid" as ELifetime
       );
 
       assert.strictEqual(result.length, 0);
@@ -237,7 +246,9 @@ describe("DiDiscoveryService", () => {
 
     it("should return empty array when no services match lifetime", () => {
       const emptyDiscoveryService = new DiDiscoveryService(() => []);
-      const result = emptyDiscoveryService.getServicesByLifetime("singleton");
+      const result = emptyDiscoveryService.getServicesByLifetime(
+        ELifetime.Singleton
+      );
 
       assert.strictEqual(result.length, 0);
     });
@@ -271,7 +282,7 @@ describe("DiDiscoveryService", () => {
       service.getAll();
       service.getServicesByTag("database");
       service.getServicesByServiceToken("SERVICE_A");
-      service.getServicesByLifetime("singleton");
+      service.getServicesByLifetime(ELifetime.Singleton);
 
       assert.strictEqual(callCount, 4);
     });
@@ -281,7 +292,7 @@ describe("DiDiscoveryService", () => {
     it("should handle services with undefined tags", () => {
       const serviceWithUndefinedTag = new ServiceRegistration({
         token: "SERVICE_UNDEFINED_TAG",
-        lifetime: "singleton",
+        lifetime: ELifetime.Singleton,
         factory: () => ({}),
         tag: undefined as any,
       });
@@ -312,7 +323,7 @@ describe("DiDiscoveryService", () => {
         /Getter error/
       );
       assert.throws(
-        () => service.getServicesByLifetime("singleton"),
+        () => service.getServicesByLifetime(ELifetime.Singleton),
         /Getter error/
       );
     });
@@ -369,8 +380,7 @@ describe("DiDiscoveryService", () => {
         diConfigurator.addSingleton(
           DATABASE_TOKEN,
           () => new DatabaseService(),
-          undefined,
-          "database"
+          { tag: "database" }
         );
         diConfigurator.addSingleton(
           API_TOKEN,
@@ -378,15 +388,12 @@ describe("DiDiscoveryService", () => {
             container
               .resolve(DATABASE_TOKEN)
               .then((db) => new ApiService(db as DatabaseService)),
-          undefined,
-          "api"
+          { tag: "api" }
         );
-        diConfigurator.addSingleton(
-          LOGGER_TOKEN,
-          () => new LoggerService(),
-          { eager: true },
-          "logging"
-        );
+        diConfigurator.addSingleton(LOGGER_TOKEN, () => new LoggerService(), {
+          eager: true,
+          tag: "logging",
+        });
 
         const allServices = discoveryService.getAll();
         assert.strictEqual(allServices.length, 3);
@@ -396,21 +403,21 @@ describe("DiDiscoveryService", () => {
           discoveryService.getServicesByServiceToken(DATABASE_TOKEN);
         assert.strictEqual(symbolServices.length, 1);
         assert.strictEqual(symbolServices[0].tokenType, "symbol");
-        assert.strictEqual(symbolServices[0].lifetime, "singleton");
+        assert.strictEqual(symbolServices[0].lifetime, ELifetime.Singleton);
         assert.strictEqual(symbolServices[0].tag, "database");
 
         const stringServices =
           discoveryService.getServicesByServiceToken(API_TOKEN);
         assert.strictEqual(stringServices.length, 1);
         assert.strictEqual(stringServices[0].tokenType, "string");
-        assert.strictEqual(stringServices[0].lifetime, "singleton");
+        assert.strictEqual(stringServices[0].lifetime, ELifetime.Singleton);
         assert.strictEqual(stringServices[0].tag, "api");
 
         const classServices =
           discoveryService.getServicesByServiceToken(LOGGER_TOKEN);
         assert.strictEqual(classServices.length, 1);
         assert.strictEqual(classServices[0].tokenType, "class");
-        assert.strictEqual(classServices[0].lifetime, "singleton");
+        assert.strictEqual(classServices[0].lifetime, ELifetime.Singleton);
         assert.strictEqual(classServices[0].tag, "logging");
         assert.strictEqual(classServices[0].singletonOptions?.eager, true);
       });
@@ -426,11 +433,14 @@ describe("DiDiscoveryService", () => {
         );
         diConfigurator.addScoped(CACHE_TOKEN, () => ({ cache: "data" }));
 
-        const singletonServices =
-          discoveryService.getServicesByLifetime("singleton");
+        const singletonServices = discoveryService.getServicesByLifetime(
+          ELifetime.Singleton
+        );
         assert.strictEqual(singletonServices.length, 2);
 
-        const scopedServices = discoveryService.getServicesByLifetime("scoped");
+        const scopedServices = discoveryService.getServicesByLifetime(
+          ELifetime.Scoped
+        );
         assert.strictEqual(scopedServices.length, 1);
         assert.strictEqual(scopedServices[0].token, CACHE_TOKEN);
       });
@@ -439,28 +449,23 @@ describe("DiDiscoveryService", () => {
         diConfigurator.addSingleton(
           DATABASE_TOKEN,
           () => new DatabaseService(),
-          undefined,
-          "infrastructure"
+          { tag: "infrastructure" }
         );
         diConfigurator.addSingleton(
           API_TOKEN,
           () => new ApiService({} as DatabaseService),
-          undefined,
-          "infrastructure"
+          { tag: "infrastructure" }
         );
-        diConfigurator.addSingleton(
-          LOGGER_TOKEN,
-          () => new LoggerService(),
-          undefined,
-          "logging"
-        );
+        diConfigurator.addSingleton(LOGGER_TOKEN, () => new LoggerService(), {
+          tag: "logging",
+        });
 
         const infrastructureServices =
           discoveryService.getServicesByTag("infrastructure");
         assert.strictEqual(infrastructureServices.length, 2);
         infrastructureServices.forEach((service) => {
           assert.strictEqual(service.tag, "infrastructure");
-          assert.strictEqual(service.lifetime, "singleton");
+          assert.strictEqual(service.lifetime, ELifetime.Singleton);
         });
 
         const loggingServices = discoveryService.getServicesByTag("logging");
@@ -471,31 +476,31 @@ describe("DiDiscoveryService", () => {
 
     describe("Scoped Service Discovery", () => {
       it("should discover scoped services with different configurations", () => {
-        diConfigurator.addScoped(
-          DATABASE_TOKEN,
-          () => new DatabaseService(),
-          "database"
-        );
+        diConfigurator.addScoped(DATABASE_TOKEN, () => new DatabaseService(), {
+          tag: "database",
+        });
         diConfigurator.addScoped(
           API_TOKEN,
           (container) =>
             container
               .resolve(DATABASE_TOKEN)
               .then((db) => new ApiService(db as DatabaseService)),
-          "api"
+          { tag: "api" }
         );
 
-        const scopedServices = discoveryService.getServicesByLifetime("scoped");
+        const scopedServices = discoveryService.getServicesByLifetime(
+          ELifetime.Scoped
+        );
         assert.strictEqual(scopedServices.length, 2);
 
         scopedServices.forEach((service) => {
-          assert.strictEqual(service.lifetime, "scoped");
+          assert.strictEqual(service.lifetime, ELifetime.Scoped);
           assert.ok(["database", "api"].includes(service.tag));
         });
 
         const databaseServices = discoveryService.getServicesByTag("database");
         assert.strictEqual(databaseServices.length, 1);
-        assert.strictEqual(databaseServices[0].lifetime, "scoped");
+        assert.strictEqual(databaseServices[0].lifetime, ELifetime.Scoped);
       });
 
       it("should discover scoped services by token", () => {
@@ -505,13 +510,13 @@ describe("DiDiscoveryService", () => {
         const dbServices =
           discoveryService.getServicesByServiceToken(DATABASE_TOKEN);
         assert.strictEqual(dbServices.length, 1);
-        assert.strictEqual(dbServices[0].lifetime, "scoped");
+        assert.strictEqual(dbServices[0].lifetime, ELifetime.Scoped);
         assert.strictEqual(dbServices[0].tokenType, "symbol");
 
         const loggerServices =
           discoveryService.getServicesByServiceToken(LOGGER_TOKEN);
         assert.strictEqual(loggerServices.length, 1);
-        assert.strictEqual(loggerServices[0].lifetime, "scoped");
+        assert.strictEqual(loggerServices[0].lifetime, ELifetime.Scoped);
         assert.strictEqual(loggerServices[0].tokenType, "class");
       });
     });
@@ -521,30 +526,29 @@ describe("DiDiscoveryService", () => {
         diConfigurator.addTransient(
           DATABASE_TOKEN,
           () => new DatabaseService(),
-          "database"
+          { tag: "database" }
         );
         diConfigurator.addTransient(
           API_TOKEN,
           () => new ApiService({} as DatabaseService),
-          "api"
+          { tag: "api" }
         );
-        diConfigurator.addTransient(
-          LOGGER_TOKEN,
-          () => new LoggerService(),
-          "logging"
-        );
+        diConfigurator.addTransient(LOGGER_TOKEN, () => new LoggerService(), {
+          tag: "logging",
+        });
 
-        const transientServices =
-          discoveryService.getServicesByLifetime("transient");
+        const transientServices = discoveryService.getServicesByLifetime(
+          ELifetime.Transient
+        );
         assert.strictEqual(transientServices.length, 3);
 
         transientServices.forEach((service) => {
-          assert.strictEqual(service.lifetime, "transient");
+          assert.strictEqual(service.lifetime, ELifetime.Transient);
         });
 
         const apiServices = discoveryService.getServicesByTag("api");
         assert.strictEqual(apiServices.length, 1);
-        assert.strictEqual(apiServices[0].lifetime, "transient");
+        assert.strictEqual(apiServices[0].lifetime, ELifetime.Transient);
         assert.strictEqual(apiServices[0].token, API_TOKEN);
       });
     });
@@ -555,34 +559,33 @@ describe("DiDiscoveryService", () => {
         diConfigurator.addSingleton(
           DATABASE_TOKEN,
           () => new DatabaseService(),
-          undefined,
-          "core"
+          { tag: "core" }
         );
         diConfigurator.addScoped(
           API_TOKEN,
           () => new ApiService({} as DatabaseService),
-          "core"
+          { tag: "core" }
         );
-        diConfigurator.addTransient(
-          LOGGER_TOKEN,
-          () => new LoggerService(),
-          "utility"
-        );
-        diConfigurator.addTransient(
-          CACHE_TOKEN,
-          () => ({ data: "cached" }),
-          "utility"
-        );
+        diConfigurator.addTransient(LOGGER_TOKEN, () => new LoggerService(), {
+          tag: "utility",
+        });
+        diConfigurator.addTransient(CACHE_TOKEN, () => ({ data: "cached" }), {
+          tag: "utility",
+        });
 
         const allServices = discoveryService.getAll();
         assert.strictEqual(allServices.length, 4);
 
         // Test by lifetime
-        const singletonServices =
-          discoveryService.getServicesByLifetime("singleton");
-        const scopedServices = discoveryService.getServicesByLifetime("scoped");
-        const transientServices =
-          discoveryService.getServicesByLifetime("transient");
+        const singletonServices = discoveryService.getServicesByLifetime(
+          ELifetime.Singleton
+        );
+        const scopedServices = discoveryService.getServicesByLifetime(
+          ELifetime.Scoped
+        );
+        const transientServices = discoveryService.getServicesByLifetime(
+          ELifetime.Transient
+        );
 
         assert.strictEqual(singletonServices.length, 1);
         assert.strictEqual(scopedServices.length, 1);
@@ -597,8 +600,8 @@ describe("DiDiscoveryService", () => {
 
         // Verify core services have different lifetimes
         const coreLifetimes = coreServices.map((s) => s.lifetime);
-        assert.ok(coreLifetimes.includes("singleton"));
-        assert.ok(coreLifetimes.includes("scoped"));
+        assert.ok(coreLifetimes.includes(ELifetime.Singleton));
+        assert.ok(coreLifetimes.includes(ELifetime.Scoped));
       });
     });
 
@@ -655,14 +658,12 @@ describe("DiDiscoveryService", () => {
         diConfigurator.addSingleton(
           DATABASE_TOKEN,
           () => new DatabaseService(),
-          undefined,
-          "database"
+          { tag: "database" }
         );
         diConfigurator.addSingleton(
           DATABASE_TOKEN,
           () => new DatabaseService(),
-          undefined,
-          "database"
+          { tag: "database" }
         );
 
         const dbServices =
@@ -677,14 +678,12 @@ describe("DiDiscoveryService", () => {
         diConfigurator.addSingleton(
           DATABASE_TOKEN,
           () => new DatabaseService(),
-          undefined,
-          "primary"
+          { tag: "primary" }
         );
         diConfigurator.addSingleton(
           DATABASE_TOKEN,
           () => new DatabaseService(),
-          undefined,
-          "secondary"
+          { tag: "secondary" }
         );
 
         const allServices = discoveryService.getAll();
@@ -706,8 +705,7 @@ describe("DiDiscoveryService", () => {
         diConfigurator.addSingleton(
           "CONFIG",
           () => ({ dbUrl: "localhost", apiPort: 3000 }),
-          undefined,
-          "config"
+          { tag: "config" }
         );
 
         diConfigurator.addSingleton(
@@ -717,8 +715,7 @@ describe("DiDiscoveryService", () => {
             const db = new DatabaseService();
             return db;
           },
-          undefined,
-          "infrastructure"
+          { tag: "infrastructure" }
         );
 
         diConfigurator.addScoped(
@@ -727,14 +724,12 @@ describe("DiDiscoveryService", () => {
             const db = await container.resolve(DATABASE_TOKEN);
             return new ApiService(db as DatabaseService);
           },
-          "business"
+          { tag: "business" }
         );
 
-        diConfigurator.addTransient(
-          LOGGER_TOKEN,
-          () => new LoggerService(),
-          "utility"
-        );
+        diConfigurator.addTransient(LOGGER_TOKEN, () => new LoggerService(), {
+          tag: "utility",
+        });
 
         const allServices = discoveryService.getAll();
         assert.strictEqual(allServices.length, 4);
@@ -765,23 +760,20 @@ describe("DiDiscoveryService", () => {
             configurator.addSingleton(
               "MODULE_SERVICE_1",
               () => ({ name: "Service1" }),
-              undefined,
-              "module"
+              { tag: "module" }
             );
             configurator.addScoped(
               "MODULE_SERVICE_2",
               () => ({ name: "Service2" }),
-              "module"
+              { tag: "module" }
             );
           },
         };
 
         // Register services before module
-        diConfigurator.addTransient(
-          LOGGER_TOKEN,
-          () => new LoggerService(),
-          "core"
-        );
+        diConfigurator.addTransient(LOGGER_TOKEN, () => new LoggerService(), {
+          tag: "core",
+        });
 
         // Add module
         diConfigurator.addModule(testModule);

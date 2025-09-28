@@ -6,10 +6,13 @@ import {
   IDiContainer,
   IDiModule,
   IInitableDiContainer,
+  IScopedServiceRegistrationOptions,
   ISingletonOptions,
-  TLifetime,
+  ELifetime,
   TServiceToken,
   TUseFactory,
+  ITransientServiceRegistrationOptions,
+  ISingletonServiceRegistrationOptions,
 } from "./types";
 import { normalizeTagToCompatibleFormat } from "./utils";
 import { DiDiscoveryService } from "./di-discovery-service";
@@ -35,7 +38,6 @@ export class DiConfigurator implements IDiConfigurator {
     TServiceToken,
     ServiceRegistration[]
   >();
-  private readonly _registeredModules = new Set<IDiModule>();
   private readonly _discoveryService = new DiDiscoveryService(() =>
     this.listServiceRegistrations()
   );
@@ -55,12 +57,15 @@ export class DiConfigurator implements IDiConfigurator {
   public addSingleton<T>(
     token: TServiceToken<any>,
     factory: TUseFactory<T>,
-    singletonOptions?: ISingletonOptions,
-    tag?: string
+    options?: ISingletonServiceRegistrationOptions
   ) {
-    const normalizedTag = normalizeTagToCompatibleFormat(tag ?? "default");
+    const normalizedTag = normalizeTagToCompatibleFormat(options?.tag);
 
-    this.checkForCrossLifecycleRegistration(token, "singleton", normalizedTag);
+    this.checkForCrossLifecycleRegistration(
+      token,
+      ELifetime.Singleton,
+      normalizedTag
+    );
 
     const serviceRegistrationList =
       this._singletonServiceRegistry.get(token) ?? [];
@@ -82,9 +87,9 @@ export class DiConfigurator implements IDiConfigurator {
     const serviceRegistration = new ServiceRegistration({
       token,
       factory,
-      lifetime: "singleton",
+      lifetime: ELifetime.Singleton,
       tag: normalizedTag,
-      singletonOptions,
+      singletonOptions: options,
     });
 
     serviceRegistrationList.push(serviceRegistration);
@@ -97,11 +102,15 @@ export class DiConfigurator implements IDiConfigurator {
   public addScoped<T>(
     token: TServiceToken<any>,
     factory: TUseFactory<T>,
-    tag?: string
+    options?: IScopedServiceRegistrationOptions
   ) {
-    const normalizedTag = normalizeTagToCompatibleFormat(tag ?? "default");
+    const normalizedTag = normalizeTagToCompatibleFormat(options?.tag);
 
-    this.checkForCrossLifecycleRegistration(token, "scoped", normalizedTag);
+    this.checkForCrossLifecycleRegistration(
+      token,
+      ELifetime.Scoped,
+      normalizedTag
+    );
 
     const serviceRegistrationList =
       this._requestScopeServiceRegistry.get(token) ?? [];
@@ -123,7 +132,7 @@ export class DiConfigurator implements IDiConfigurator {
     const serviceRegistration = new ScopedServiceRegistration({
       token,
       factory,
-      lifetime: "scoped",
+      lifetime: ELifetime.Scoped,
       tag: normalizedTag,
       requestScopeContextGetter: () => this.getRequestScopeContext(),
     });
@@ -138,11 +147,15 @@ export class DiConfigurator implements IDiConfigurator {
   public addTransient<T>(
     token: TServiceToken<any>,
     factory: TUseFactory<T>,
-    tag?: string
+    options?: ITransientServiceRegistrationOptions
   ) {
-    const normalizedTag = normalizeTagToCompatibleFormat(tag ?? "default");
+    const normalizedTag = normalizeTagToCompatibleFormat(options?.tag);
 
-    this.checkForCrossLifecycleRegistration(token, "transient", normalizedTag);
+    this.checkForCrossLifecycleRegistration(
+      token,
+      ELifetime.Transient,
+      normalizedTag
+    );
 
     const serviceRegistrationList =
       this._transientServiceRegistry.get(token) ?? [];
@@ -164,7 +177,7 @@ export class DiConfigurator implements IDiConfigurator {
     const serviceRegistration = new ServiceRegistration({
       token,
       factory,
-      lifetime: "transient",
+      lifetime: ELifetime.Transient,
       tag: normalizedTag,
     });
 
@@ -176,14 +189,7 @@ export class DiConfigurator implements IDiConfigurator {
   }
 
   public addModule(module: IDiModule) {
-    if (this._registeredModules.has(module)) {
-      return this;
-    }
-
-    this._registeredModules.add(module);
-
     module.register(this);
-
     return this;
   }
 
@@ -209,16 +215,25 @@ export class DiConfigurator implements IDiConfigurator {
 
   private checkForCrossLifecycleRegistration(
     token: TServiceToken,
-    attemptedLifecycle: TLifetime,
+    attemptedLifecycle: ELifetime,
     tag: string
   ): void {
     const registries: {
-      lifetime: TLifetime;
+      lifetime: ELifetime;
       registry: Map<TServiceToken, ServiceRegistration[]>;
     }[] = [
-      { lifetime: "singleton", registry: this._singletonServiceRegistry },
-      { lifetime: "scoped", registry: this._requestScopeServiceRegistry },
-      { lifetime: "transient", registry: this._transientServiceRegistry },
+      {
+        lifetime: ELifetime.Singleton,
+        registry: this._singletonServiceRegistry,
+      },
+      {
+        lifetime: ELifetime.Scoped,
+        registry: this._requestScopeServiceRegistry,
+      },
+      {
+        lifetime: ELifetime.Transient,
+        registry: this._transientServiceRegistry,
+      },
     ];
 
     for (const { lifetime, registry } of registries) {

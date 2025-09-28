@@ -4,7 +4,7 @@ import {
   IInitableDiContainer,
   IOnConstruct,
   IOnDispose,
-  TLifetime,
+  ELifetime,
   IResolveAllResult,
   TServiceToken,
 } from "./types";
@@ -31,7 +31,7 @@ export class DiContainer implements IInitableDiContainer {
   >();
   private readonly _lifecycleResolutionContext = new Map<
     AsyncContextStore | undefined,
-    Map<TServiceToken, TLifetime>
+    Map<TServiceToken, ELifetime>
   >();
 
   public constructor(private readonly _diConfigurator: DiConfigurator) {}
@@ -49,7 +49,7 @@ export class DiContainer implements IInitableDiContainer {
         this.addToResolutionChain(token);
 
         if (this._diConfigurator.requestScopeServiceRegistry.has(token)) {
-          this.checkForLifecycleDependencyViolation(token, "scoped");
+          this.checkForLifecycleDependencyViolation(token, ELifetime.Scoped);
         }
 
         return (
@@ -91,7 +91,7 @@ export class DiContainer implements IInitableDiContainer {
 
         // Check for lifecycle dependency violations before trying to resolve
         if (this._diConfigurator.requestScopeServiceRegistry.has(token)) {
-          this.checkForLifecycleDependencyViolation(token, "scoped");
+          this.checkForLifecycleDependencyViolation(token, ELifetime.Scoped);
         }
 
         const singletonServices = await this.getSingletonAll<T>(token);
@@ -309,7 +309,7 @@ export class DiContainer implements IInitableDiContainer {
     }
 
     try {
-      this.addToLifecycleContext(token, "singleton");
+      this.addToLifecycleContext(token, ELifetime.Singleton);
       const serviceInstance = await serviceRegistration.factory(this);
       if ((serviceInstance as IOnConstruct)?.onConstruct) {
         await (serviceInstance as IOnConstruct).onConstruct();
@@ -401,7 +401,7 @@ export class DiContainer implements IInitableDiContainer {
     }
 
     try {
-      this.addToLifecycleContext(token, "scoped");
+      this.addToLifecycleContext(token, ELifetime.Scoped);
       const serviceInstance = await serviceRegistration.factory(this);
       if ((serviceInstance as IOnConstruct)?.onConstruct) {
         await (serviceInstance as IOnConstruct).onConstruct();
@@ -485,7 +485,7 @@ export class DiContainer implements IInitableDiContainer {
     }
 
     try {
-      this.addToLifecycleContext(token, "transient");
+      this.addToLifecycleContext(token, ELifetime.Transient);
       const serviceInstance = await serviceRegistration.factory(this);
       if ((serviceInstance as IOnConstruct)?.onConstruct) {
         await (serviceInstance as IOnConstruct).onConstruct();
@@ -563,12 +563,12 @@ export class DiContainer implements IInitableDiContainer {
   // Lifecycle dependency validation
   // ============================
 
-  private getCurrentLifecycleContext(): Map<TServiceToken, TLifetime> {
+  private getCurrentLifecycleContext(): Map<TServiceToken, ELifetime> {
     const currentScope = this.getRequestScopeContext();
     if (!this._lifecycleResolutionContext.has(currentScope)) {
       this._lifecycleResolutionContext.set(
         currentScope,
-        new Map<TServiceToken, TLifetime>()
+        new Map<TServiceToken, ELifetime>()
       );
     }
     return this._lifecycleResolutionContext.get(currentScope)!;
@@ -576,7 +576,7 @@ export class DiContainer implements IInitableDiContainer {
 
   private addToLifecycleContext(
     token: TServiceToken,
-    lifetime: TLifetime
+    lifetime: ELifetime
   ): void {
     this.getCurrentLifecycleContext().set(token, lifetime);
   }
@@ -587,7 +587,7 @@ export class DiContainer implements IInitableDiContainer {
 
   private checkForLifecycleDependencyViolation(
     token: TServiceToken,
-    requestedLifetime: TLifetime
+    requestedLifetime: ELifetime
   ): void {
     const currentContext = this.getCurrentLifecycleContext();
 

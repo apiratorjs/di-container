@@ -1,9 +1,5 @@
-import { DiConfigurator } from "./di-configurator";
-import { DiContainer } from "./di-container";
-import { DiModule } from "./di-module";
-import { DiDiscoveryService } from "./di-discovery-service";
-
+export * from "./di-configurator";
+export * from "./di-container";
+export * from "./di-discovery-service";
 export * from "./types";
 export * from "./errors";
-
-export { DiContainer, DiConfigurator, DiModule, DiDiscoveryService };

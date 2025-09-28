@@ -3,7 +3,7 @@
 [![NPM version](https://img.shields.io/npm/v/@apiratorjs/di-container.svg)](https://www.npmjs.com/package/@apiratorjs/di-container)
 [![License: MIT](https://img.shields.io/npm/l/@apiratorjs/di-container.svg)](https://github.com/apiratorjs/di-container/blob/main/LICENSE)
 
-A lightweight dependency injection container for JavaScript and TypeScript with powerful features: modular organization with DiModule.create, service discovery for runtime introspection, service tagging for multiple implementations, lazy initialization, automatic circular dependency detection, and multiple service lifecycles (singleton with both in-place and lazy initialization, request-scoped, transient). Includes built-in async context management, lifecycle hooks (onConstruct/onDispose), and remains completely framework-agnostic for flexible application architecture.
+A lightweight dependency injection container for JavaScript and TypeScript with powerful features: modular organization, service discovery for runtime introspection, service tagging for multiple implementations, lazy initialization, automatic circular dependency detection, and multiple service lifecycles (singleton with both in-place and lazy initialization, request-scoped, transient). Includes built-in async context management, lifecycle hooks (onConstruct/onDispose), and remains completely framework-agnostic for flexible application architecture.
 
 > **Note:** Requires Node.js version **>=16.4.0**
 
@@ -143,14 +143,12 @@ const scopedService = await container.resolve("SCOPED_SERVICE"); // Error!
 configurator.addSingleton(
   "PAYMENT",
   () => new StripePayment(),
-  undefined,
-  "stripe"
+  { tag: "stripe" }
 );
 configurator.addSingleton(
   "PAYMENT",
   () => new PayPalPayment(),
-  undefined,
-  "paypal"
+  { tag: "paypal" }
 );
 configurator.addSingleton("PAYMENT", () => new BankPayment()); // Gets "default" tag automatically
 ```
@@ -168,8 +166,7 @@ configurator.addSingleton("DATABASE", () => new MySQLDatabase()); // MySQL wins
 configurator.addSingleton(
   "DATABASE",
   () => new MongoDatabase(),
-  undefined,
-  "nosql"
+  { tag: "nosql" }
 ); // Separate service
 ```
 
@@ -181,19 +178,43 @@ The `IDiConfigurator` is the main interface for configuring dependency injection
 
 ### Service Registration Methods
 
-| Method                                            | Description                                                   | Example                                                                  |
-| ------------------------------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| `addSingleton<T>(token, factory, options?, tag?)` | Register a singleton service (tag defaults to "default")      | `configurator.addSingleton("DB", () => new Database(), { eager: true })` |
-| `addScoped<T>(token, factory, tag?)`              | Register a request-scoped service (tag defaults to "default") | `configurator.addScoped("USER_CTX", async (cfg) => new UserContext())`   |
-| `addTransient<T>(token, factory, tag?)`           | Register a transient service (tag defaults to "default")      | `configurator.addTransient("LOGGER", () => new Logger(), "console")`     |
-| `addModule(module)`                               | Register a module with multiple services                      | `configurator.addModule(new DatabaseModule())`                           |
+| Method                                                                                | Description                                                   | Example                                                                  |
+| ------------------------------------------------------------------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `addSingleton<T>(token, factory, options?): this`                                    | Register a singleton service (tag in options, defaults to "default") | `configurator.addSingleton("DB", () => new Database(), { eager: true })` |
+| `addScoped<T>(token, factory, options?): this`                                       | Register a request-scoped service (tag in options, defaults to "default") | `configurator.addScoped("USER_CTX", async (container) => new UserContext())` |
+| `addTransient<T>(token, factory, options?): this`                                    | Register a transient service (tag in options, defaults to "default") | `configurator.addTransient("LOGGER", () => new Logger(), { tag: "console" })` |
+| `addModule(module): this`                                                             | Register a module (calls module.register(configurator))       | `configurator.addModule(new DatabaseModule())`                           |
+
+#### Options Interfaces
+
+**ISingletonServiceRegistrationOptions** (for `addSingleton`):
+```typescript
+interface ISingletonServiceRegistrationOptions {
+  tag?: string;      // Service tag (defaults to "default")
+  eager?: boolean;   // Should the singleton be eagerly created during container build
+}
+```
+
+**IScopedServiceRegistrationOptions** (for `addScoped`):
+```typescript
+interface IScopedServiceRegistrationOptions {
+  tag?: string;      // Service tag (defaults to "default")
+}
+```
+
+**ITransientServiceRegistrationOptions** (for `addTransient`):
+```typescript
+interface ITransientServiceRegistrationOptions {
+  tag?: string;      // Service tag (defaults to "default")
+}
+```
 
 ### Container Management Methods
 
-| Method                  | Description                 | Returns                                        |
-| ----------------------- | --------------------------- | ---------------------------------------------- |
-| `build()`               | Build the runtime container | `Promise<DiContainer>`                         |
-| `getDiscoveryService()` | Get discovery service       | `DiDiscoveryService` for service introspection |
+| Method                                    | Description                 | Returns                                        |
+| ----------------------------------------- | --------------------------- | ---------------------------------------------- |
+| `build<T extends IBuildOptions>(options?: T)` | Build the runtime container | `Promise<T extends { autoInit: false } ? IInitableDiContainer : IDiContainer>` |
+| `getDiscoveryService()`                   | Get discovery service       | `DiDiscoveryService` for service introspection |
 
 ### Practical Example
 
@@ -502,20 +523,17 @@ const configurator = new DiConfigurator();
 configurator.addSingleton(
   "PAYMENT",
   () => new StripePayment(),
-  undefined,
-  "stripe"
+  { tag: "stripe" }
 );
 configurator.addSingleton(
   "PAYMENT",
   () => new PayPalPayment(),
-  undefined,
-  "paypal"
+  { tag: "paypal" }
 );
 configurator.addSingleton(
   "PAYMENT",
   () => new BankTransferPayment(),
-  undefined,
-  "bank"
+  { tag: "bank" }
 );
 configurator.addSingleton("PAYMENT", () => new CashPayment()); // No tag specified = "default" tag
 
@@ -553,91 +571,101 @@ await container.dispose();
 
 ## Modules
 
-Organize related services into reusable modules for better code organization:
-
-### Class-based Modules
+Organize related services into reusable modules for better code organization. Modules are simply a convenient way to group service registrations together.
 
 ```typescript
-class DatabaseModule implements IDiModule {
+// Define service interfaces
+interface ILogger {
+  log(message: string): void;
+}
+
+interface IUserService {
+  getCurrentUser(): string;
+}
+
+interface IAuthService {
+  isAuthenticated(): boolean;
+}
+
+// Service implementations
+class ConsoleLogger implements ILogger {
+  log(message: string): void {
+    console.log(`[LOG] ${message}`);
+  }
+}
+
+class UserServiceImpl implements IUserService {
+  constructor(private logger: ILogger, private authService: IAuthService) {}
+
+  getCurrentUser(): string {
+    this.logger.log("Getting current user");
+    return this.authService.isAuthenticated() ? "John Doe" : "Guest";
+  }
+}
+
+class AuthServiceImpl implements IAuthService {
+  constructor(private logger: ILogger) {}
+
+  isAuthenticated(): boolean {
+    this.logger.log("Checking authentication");
+    return true;
+  }
+}
+
+// Define service tokens
+const LOGGER = Symbol("LOGGER");
+const USER_SERVICE = Symbol("USER_SERVICE");
+const AUTH_SERVICE = Symbol("AUTH_SERVICE");
+
+// Create modules to organize related services
+class LoggingModule implements IDiModule {
   register(configurator: DiConfigurator): void {
-    configurator.addSingleton("DATABASE", () => new DatabaseConnection());
-    configurator.addScoped("TRANSACTION", async (cfg) => {
-      const db = await cfg.resolve("DATABASE");
-      return new TransactionManager(db);
+    configurator.addSingleton(LOGGER, () => new ConsoleLogger());
+  }
+}
+
+class AuthModule implements IDiModule {
+  register(configurator: DiConfigurator): void {
+    configurator.addSingleton(AUTH_SERVICE, async (container) => {
+      const logger = await container.resolveRequired<ILogger>(LOGGER);
+      return new AuthServiceImpl(logger);
     });
   }
 }
-```
 
-### Declarative Modules with DiModule.create
+class UserModule implements IDiModule {
+  register(configurator: DiConfigurator): void {
+    configurator.addSingleton(USER_SERVICE, async (container) => {
+      const logger = await container.resolveRequired<ILogger>(LOGGER);
+      const authService = await container.resolveRequired<IAuthService>(AUTH_SERVICE);
+      return new UserServiceImpl(logger, authService);
+    });
+  }
+}
 
-```typescript
-// Create modular service definitions
-const LoggingModule = DiModule.create({
-  providers: [
-    {
-      token: "LOGGER",
-      useFactory: () => new ConsoleLogger(),
-      lifetime: "singleton",
-    },
-  ],
-});
-
-const DataModule = DiModule.create({
-  imports: [LoggingModule],
-  providers: [
-    {
-      token: "DATABASE",
-      useFactory: () => new Database(),
-      lifetime: "singleton",
-      singletonOptions: { eager: true },
-    },
-    {
-      token: "USER_REPO",
-      useFactory: async (container) => {
-        const db = await container.resolve("DATABASE");
-        const logger = await container.resolve("LOGGER");
-        return new UserRepository(db, logger);
-      },
-      lifetime: "scoped",
-    },
-  ],
-});
-
-const AppModule = DiModule.create({
-  imports: [DataModule],
-  providers: [
-    {
-      token: "USER_SERVICE",
-      useFactory: async (container) => {
-        const repo = await container.resolve("USER_REPO");
-        return new UserService(repo);
-      },
-      lifetime: "scoped",
-      tag: "primary", // Optional tag support
-    },
-  ],
-});
-
-// Register and use - remember scoped services need request scope!
+// Register modules and use services
 const configurator = new DiConfigurator();
-configurator.addModule(AppModule);
+
+configurator.addModule(new LoggingModule());
+configurator.addModule(new AuthModule());
+configurator.addModule(new UserModule());
+
 const container = await configurator.build();
 
-await container.runWithNewRequestScope(async (container) => {
-  const userService = await container.resolve("USER_SERVICE"); // ✅ Works in scope
-  // Or resolve by tag:
-  const primaryUserService = await container.resolveTagged("primary");
-}, new AsyncContextStore());
+const userService = await container.resolveRequired<IUserService>(USER_SERVICE);
+const currentUser = userService.getCurrentUser();
+console.log(`Current user: ${currentUser}`);
+
+await container.dispose();
 ```
 
 **Module Features:**
 
-- **Imports**: Import other modules to establish dependencies
-- **Providers**: Define services with tokens, factories, lifecycles, optional singleton options, and optional tags
-- **Hierarchical**: Create nested module structures
-- **Registration Order**: Last registration wins for same token+tag combinations
-- **Tag Support**: Multiple implementations can be registered with different tags
+- **Simple Organization**: Group related service registrations together
+- **Reusability**: Modules can be reused across different applications
+- **Clean Separation**: Separate concerns by domain or functionality
+- **Standard Registration**: Use all standard service registration methods (addSingleton, addScoped, addTransient)
+- **Dependency Injection**: Services in modules can depend on services from other modules
 
 ### Contributing
 

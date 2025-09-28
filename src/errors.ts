@@ -1,4 +1,4 @@
-import { TLifetime, TServiceToken } from "./types";
+import { ELifetime, TServiceToken } from "./types";
 import { normalizeToken } from "./utils";
 
 export class DependencyInjectionError extends Error {
@@ -63,7 +63,7 @@ export class UnknownTokenTypeError extends DependencyInjectionError {
 }
 
 export class UnknownLifetimeError extends DependencyInjectionError {
-  constructor(lifetime: TLifetime) {
+  constructor(lifetime: ELifetime) {
     super(`Unknown lifetime: ${lifetime}`);
   }
 }
@@ -71,9 +71,9 @@ export class UnknownLifetimeError extends DependencyInjectionError {
 export class LifecycleDependencyViolationError extends DependencyInjectionError {
   constructor(
     public readonly dependentToken: TServiceToken,
-    public readonly dependentLifetime: TLifetime,
+    public readonly dependentLifetime: ELifetime,
     public readonly dependencyToken: TServiceToken,
-    public readonly dependencyLifetime: TLifetime
+    public readonly dependencyLifetime: ELifetime
   ) {
     const normalizedDependentToken = normalizeToken(dependentToken);
     const normalizedDependencyToken = normalizeToken(dependencyToken);

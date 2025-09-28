@@ -1,7 +1,7 @@
 import {
   IDiDiscoveryService,
   IServiceRegistration,
-  TLifetime,
+  ELifetime,
   TServiceToken,
 } from "./types";
 
@@ -28,7 +28,7 @@ export class DiDiscoveryService implements IDiDiscoveryService {
     );
   }
 
-  public getServicesByLifetime(lifetime: TLifetime): IServiceRegistration[] {
+  public getServicesByLifetime(lifetime: ELifetime): IServiceRegistration[] {
     return this._serviceRegistrationsGetter().filter(
       (serviceRegistration) => serviceRegistration.lifetime === lifetime
     );

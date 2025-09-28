@@ -566,8 +566,7 @@ describe("DiContainer", () => {
             primaryDisposeCount++;
           },
         }),
-        undefined,
-        "primary"
+        { tag: "primary" }
       );
 
       diConfigurator.addSingleton(
@@ -577,8 +576,7 @@ describe("DiContainer", () => {
             secondaryDisposeCount++;
           },
         }),
-        undefined,
-        "secondary"
+        { tag: "secondary" }
       );
 
       // Resolve both services
@@ -879,7 +877,7 @@ describe("DiContainer", () => {
             primaryDisposeCount++;
           },
         }),
-        "primary"
+        { tag: "primary" }
       );
 
       diConfigurator.addScoped(
@@ -890,7 +888,7 @@ describe("DiContainer", () => {
             secondaryDisposeCount++;
           },
         }),
-        "secondary"
+        { tag: "secondary" }
       );
 
       await runScope(async () => {
@@ -1218,15 +1216,13 @@ describe("DIContainer | Tag Functionality", () => {
       diConfigurator.addSingleton(
         TAGGED_SINGLETON_TOKEN,
         async () => ({ name: "primary-service", tag: "primary" }),
-        undefined,
-        "primary"
+        { tag: "primary" }
       );
 
       diConfigurator.addSingleton(
         TAGGED_SINGLETON_TOKEN,
         async () => ({ name: "secondary-service", tag: "secondary" }),
-        undefined,
-        "secondary"
+        { tag: "secondary" }
       );
 
       const primaryService = await diContainer.resolve(
@@ -1253,8 +1249,7 @@ describe("DIContainer | Tag Functionality", () => {
       diConfigurator.addSingleton(
         TAGGED_SINGLETON_TOKEN,
         async () => ({ name: "tagged-service", id: Math.random() }),
-        undefined,
-        "test-tag"
+        { tag: "test-tag" }
       );
 
       const instance1 = await diContainer.resolve(
@@ -1284,8 +1279,7 @@ describe("DIContainer | Tag Functionality", () => {
           eagerBuildCount++;
           return { name: "eager-tagged-service" };
         },
-        { eager: true },
-        "eager-tag"
+        { eager: true, tag: "eager-tag" }
       );
 
       // Build container to trigger eager initialization
@@ -1311,13 +1305,13 @@ describe("DIContainer | Tag Functionality", () => {
       diConfigurator.addScoped(
         TAGGED_SCOPED_TOKEN,
         async () => ({ name: "scoped-primary", tag: "primary" }),
-        "primary"
+        { tag: "primary" }
       );
 
       diConfigurator.addScoped(
         TAGGED_SCOPED_TOKEN,
         async () => ({ name: "scoped-secondary", tag: "secondary" }),
-        "secondary"
+        { tag: "secondary" }
       );
 
       await runScope(async () => {
@@ -1346,7 +1340,7 @@ describe("DIContainer | Tag Functionality", () => {
       diConfigurator.addScoped(
         TAGGED_SCOPED_TOKEN,
         async () => ({ name: "scoped-service", id: Math.random() }),
-        "scope-tag"
+        { tag: "scope-tag" }
       );
 
       await runScope(async () => {
@@ -1367,7 +1361,7 @@ describe("DIContainer | Tag Functionality", () => {
       diConfigurator.addScoped(
         TAGGED_SCOPED_TOKEN,
         async () => ({ name: "scoped-service", id: Math.random() }),
-        "scope-tag"
+        { tag: "scope-tag" }
       );
 
       let firstScopeInstance: any;
@@ -1396,13 +1390,13 @@ describe("DIContainer | Tag Functionality", () => {
       diConfigurator.addTransient(
         TAGGED_TRANSIENT_TOKEN,
         async () => ({ name: "transient-primary", tag: "primary" }),
-        "primary"
+        { tag: "primary" }
       );
 
       diConfigurator.addTransient(
         TAGGED_TRANSIENT_TOKEN,
         async () => ({ name: "transient-secondary", tag: "secondary" }),
-        "secondary"
+        { tag: "secondary" }
       );
 
       const primaryService1 = await diContainer.resolve(
@@ -1440,7 +1434,7 @@ describe("DIContainer | Tag Functionality", () => {
       diConfigurator.addTransient(
         TAGGED_TRANSIENT_TOKEN,
         async () => ({ name: "transient-service", id: Math.random() }),
-        "transient-tag"
+        { tag: "transient-tag" }
       );
 
       const instance1 = await diContainer.resolve(
@@ -1463,8 +1457,7 @@ describe("DIContainer | Tag Functionality", () => {
       diConfigurator.addSingleton(
         TAGGED_SINGLETON_TOKEN,
         async () => ({ name: "case-insensitive-service" }),
-        undefined,
-        "MyTag"
+        { tag: "MyTag" }
       );
 
       const service1 = await diContainer.resolve(
@@ -1522,8 +1515,7 @@ describe("DIContainer | Tag Functionality", () => {
       diConfigurator.addSingleton(
         TAGGED_SINGLETON_TOKEN,
         async () => ({ name: "explicit-default-service" }),
-        undefined,
-        "default"
+        { tag: "default" }
       );
 
       // This should override the previous registration since both normalize to "default"
@@ -1544,15 +1536,13 @@ describe("DIContainer | Tag Functionality", () => {
       diConfigurator.addSingleton(
         TAGGED_SINGLETON_TOKEN,
         async () => ({ name: "first-service" }),
-        undefined,
-        "same-tag"
+        { tag: "same-tag" }
       );
 
       diConfigurator.addSingleton(
         TAGGED_SINGLETON_TOKEN,
         async () => ({ name: "second-service" }),
-        undefined,
-        "same-tag"
+        { tag: "same-tag" }
       );
 
       const service = await diContainer.resolve(
@@ -1566,15 +1556,13 @@ describe("DIContainer | Tag Functionality", () => {
       diConfigurator.addSingleton(
         TAGGED_SINGLETON_TOKEN,
         async () => ({ name: "tag1-service" }),
-        undefined,
-        "tag1"
+        { tag: "tag1" }
       );
 
       diConfigurator.addSingleton(
         TAGGED_SINGLETON_TOKEN,
         async () => ({ name: "tag2-service" }),
-        undefined,
-        "tag2"
+        { tag: "tag2" }
       );
 
       const service1 = await diContainer.resolve(
@@ -1597,8 +1585,7 @@ describe("DIContainer | Tag Functionality", () => {
       diConfigurator.addSingleton(
         TAGGED_SINGLETON_TOKEN,
         async () => ({ name: "existing-service" }),
-        undefined,
-        "existing-tag"
+        { tag: "existing-tag" }
       );
 
       await assert.rejects(
@@ -1611,7 +1598,7 @@ describe("DIContainer | Tag Functionality", () => {
       diConfigurator.addScoped(
         TAGGED_SCOPED_TOKEN,
         async () => ({ name: "scoped-service" }),
-        "scoped-tag"
+        { tag: "scoped-tag" }
       );
 
       await assert.rejects(
@@ -1640,8 +1627,7 @@ describe("DIContainer | Tag Functionality", () => {
           };
           return service;
         },
-        undefined,
-        "hooked-tag"
+        { tag: "hooked-tag" }
       );
 
       await diContainer.resolve(TAGGED_SINGLETON_TOKEN, "hooked-tag");
@@ -1669,7 +1655,7 @@ describe("DIContainer | Tag Functionality", () => {
           };
           return service;
         },
-        "scoped-hooked-tag"
+        { tag: "scoped-hooked-tag" }
       );
 
       await runScope(async () => {
@@ -1699,8 +1685,7 @@ describe("DIContainer | Tag Functionality", () => {
               id: factoryCallCount,
             };
           },
-          undefined,
-          "primary"
+          { tag: "primary" }
         );
 
         diConfigurator.addSingleton(
@@ -1713,8 +1698,7 @@ describe("DIContainer | Tag Functionality", () => {
               id: factoryCallCount,
             };
           },
-          undefined,
-          "secondary"
+          { tag: "secondary" }
         );
 
         const services = await diContainer.resolveAll(MULTI_SINGLETON_TOKEN);
@@ -1742,7 +1726,7 @@ describe("DIContainer | Tag Functionality", () => {
               id: factoryCallCount,
             };
           },
-          "primary"
+          { tag: "primary" }
         );
 
         diConfigurator.addScoped(
@@ -1755,7 +1739,7 @@ describe("DIContainer | Tag Functionality", () => {
               id: factoryCallCount,
             };
           },
-          "secondary"
+          { tag: "secondary" }
         );
 
         await runScope(async () => {
@@ -1784,7 +1768,7 @@ describe("DIContainer | Tag Functionality", () => {
               id: factoryCallCount,
             };
           },
-          "primary"
+          { tag: "primary" }
         );
 
         diConfigurator.addTransient(
@@ -1797,7 +1781,7 @@ describe("DIContainer | Tag Functionality", () => {
               id: factoryCallCount,
             };
           },
-          "secondary"
+          { tag: "secondary" }
         );
 
         const services = await diContainer.resolveAll(MULTI_TRANSIENT_TOKEN);
@@ -1965,8 +1949,7 @@ describe("DIContainer | Tag Functionality", () => {
             };
             return service;
           },
-          undefined,
-          "primary"
+          { tag: "primary" }
         );
 
         diConfigurator.addSingleton(
@@ -1980,8 +1963,7 @@ describe("DIContainer | Tag Functionality", () => {
             };
             return service;
           },
-          undefined,
-          "secondary"
+          { tag: "secondary" }
         );
 
         const services = await diContainer.resolveAll(HOOKED_SINGLETON_TOKEN);
@@ -2005,7 +1987,7 @@ describe("DIContainer | Tag Functionality", () => {
             };
             return service;
           },
-          "primary"
+          { tag: "primary" }
         );
 
         diConfigurator.addScoped(
@@ -2019,7 +2001,7 @@ describe("DIContainer | Tag Functionality", () => {
             };
             return service;
           },
-          "secondary"
+          { tag: "secondary" }
         );
 
         await runScope(async () => {
@@ -2358,23 +2340,20 @@ describe("DIContainer | Tag Functionality", () => {
       diConfigurator.addSingleton(
         TOKEN,
         async () => ({ lifecycle: "singleton" }),
-        undefined,
-        "singleton-tag"
+        { tag: "singleton-tag" }
       );
 
       assert.throws(() => {
-        diConfigurator.addScoped(
-          TOKEN,
-          async () => ({ lifecycle: "scoped" }),
-          "scoped-tag"
-        );
+        diConfigurator.addScoped(TOKEN, async () => ({ lifecycle: "scoped" }), {
+          tag: "scoped-tag",
+        });
       }, /Cannot register token 'LIFECYCLE_TAG_TOKEN' as scoped because it is already registered as singleton/);
 
       assert.throws(() => {
         diConfigurator.addTransient(
           TOKEN,
           async () => ({ lifecycle: "transient" }),
-          "transient-tag"
+          { tag: "transient-tag" }
         );
       }, /Cannot register token 'LIFECYCLE_TAG_TOKEN' as transient because it is already registered as singleton/);
     });
@@ -2401,19 +2380,14 @@ describe("DIContainer | Tag Functionality", () => {
     it("should forbid token registration across lifecycles regardless of tag differences", async () => {
       const TOKEN = "STRICT_TOKEN";
 
-      diConfigurator.addSingleton(
-        TOKEN,
-        async () => ({ type: "singleton" }),
-        undefined,
-        "tag1"
-      );
+      diConfigurator.addSingleton(TOKEN, async () => ({ type: "singleton" }), {
+        tag: "tag1",
+      });
 
       assert.throws(() => {
-        diConfigurator.addScoped(
-          TOKEN,
-          async () => ({ type: "scoped" }),
-          "completely-different-tag"
-        );
+        diConfigurator.addScoped(TOKEN, async () => ({ type: "scoped" }), {
+          tag: "completely-different-tag",
+        });
       }, /Cannot register token 'STRICT_TOKEN' as scoped because it is already registered as singleton/);
 
       assert.throws(() => {
@@ -2429,8 +2403,7 @@ describe("DIContainer | Tag Functionality", () => {
       diConfigurator.addSingleton(
         TAGGED_SERVICE_TOKEN,
         async () => ({ name: "tagged-singleton", type: "singleton" }),
-        undefined,
-        "my-tag"
+        { tag: "my-tag" }
       );
 
       const service = await diContainer.resolveTagged<any>("my-tag");
@@ -2447,7 +2420,7 @@ describe("DIContainer | Tag Functionality", () => {
       diConfigurator.addScoped(
         SCOPED_SERVICE_TOKEN,
         async () => ({ name: "tagged-scoped", type: "scoped" }),
-        "scoped-tag"
+        { tag: "scoped-tag" }
       );
 
       await runScope(async () => {
@@ -2466,7 +2439,7 @@ describe("DIContainer | Tag Functionality", () => {
           type: "transient",
           id: Math.random(),
         }),
-        "transient-tag"
+        { tag: "transient-tag" }
       );
 
       const service1 = await diContainer.resolveTagged<any>("transient-tag");
@@ -2489,8 +2462,7 @@ describe("DIContainer | Tag Functionality", () => {
       diConfigurator.addSingleton(
         SERVICE_TOKEN,
         async () => ({ name: "case-insensitive-service" }),
-        undefined,
-        "MyTag"
+        { tag: "MyTag" }
       );
 
       const service1 = await diContainer.resolveTagged<any>("MyTag");
@@ -2525,15 +2497,13 @@ describe("DIContainer | Tag Functionality", () => {
       diConfigurator.addSingleton(
         TOKEN_A,
         async () => ({ name: "service-a", token: "A" }),
-        undefined,
-        "shared-tag"
+        { tag: "shared-tag" }
       );
 
       diConfigurator.addSingleton(
         TOKEN_B,
         async () => ({ name: "service-b", token: "B" }),
-        undefined,
-        "shared-tag"
+        { tag: "shared-tag" }
       );
 
       const service = await diContainer.resolveTagged<any>("shared-tag");
@@ -2548,7 +2518,7 @@ describe("DIContainer | Tag Functionality", () => {
       diConfigurator.addScoped(
         SCOPED_TOKEN,
         async () => ({ name: "scoped-service" }),
-        "scope-required-tag"
+        { tag: "scope-required-tag" }
       );
 
       await assert.rejects(
@@ -2576,8 +2546,7 @@ describe("DIContainer | Tag Functionality", () => {
           };
           return service;
         },
-        undefined,
-        "hooked-tag"
+        { tag: "hooked-tag" }
       );
 
       await diContainer.resolveTagged<any>("hooked-tag");
@@ -2597,8 +2566,7 @@ describe("DIContainer | Tag Functionality", () => {
           factoryCallCount++;
           return { name: "singleton-service", callCount: factoryCallCount };
         },
-        undefined,
-        "singleton-tag"
+        { tag: "singleton-tag" }
       );
 
       const service1 = await diContainer.resolveTagged<any>("singleton-tag");
@@ -2621,7 +2589,7 @@ describe("DIContainer | Tag Functionality", () => {
           factoryCallCount++;
           return { name: "scoped-service", callCount: factoryCallCount };
         },
-        "scoped-instance-tag"
+        { tag: "scoped-instance-tag" }
       );
 
       await runScope(async () => {
@@ -2659,8 +2627,7 @@ describe("DIContainer | Tag Functionality", () => {
           await new Promise((resolve) => setTimeout(resolve, 10));
           return { name: "concurrent-service", callCount: factoryCallCount };
         },
-        undefined,
-        "concurrent-tag"
+        { tag: "concurrent-tag" }
       );
 
       const [service1, service2, service3] = await Promise.all([
@@ -2681,8 +2648,7 @@ describe("DIContainer | Tag Functionality", () => {
       diConfigurator.addSingleton(
         SYMBOL_TOKEN,
         async () => ({ name: "symbol-service", tokenType: "symbol" }),
-        undefined,
-        "symbol-tag"
+        { tag: "symbol-tag" }
       );
 
       const service = await diContainer.resolveTagged<any>("symbol-tag");
@@ -2698,12 +2664,9 @@ describe("DIContainer | Tag Functionality", () => {
         public tokenType = "class";
       }
 
-      diConfigurator.addSingleton(
-        TestService,
-        async () => new TestService(),
-        undefined,
-        "class-tag"
-      );
+      diConfigurator.addSingleton(TestService, async () => new TestService(), {
+        tag: "class-tag",
+      });
 
       const service = await diContainer.resolveTagged<TestService>("class-tag");
       assert.ok(service instanceof TestService);
@@ -2714,12 +2677,9 @@ describe("DIContainer | Tag Functionality", () => {
     it("should work with empty string tag normalized to default", async () => {
       const EMPTY_TAG_TOKEN = "EMPTY_TAG_TOKEN";
 
-      diConfigurator.addSingleton(
-        EMPTY_TAG_TOKEN,
-        async () => ({ name: "empty-tag-service" }),
-        undefined,
-        "" // Empty string should normalize to "default"
-      );
+      diConfigurator.addSingleton(EMPTY_TAG_TOKEN, async () => ({
+        name: "empty-tag-service",
+      }));
 
       const service1 = await diContainer.resolveTagged<any>("");
       const service2 = await diContainer.resolveTagged<any>("default");
@@ -2767,16 +2727,13 @@ describe("DIContainer | Lifecycle Dependency Validation", () => {
 
     diContainer = await diConfigurator.build();
 
-    await assert.rejects(
-      diContainer.resolve(SINGLETON_TOKEN),
-      (err: Error) => {
-        assert.match(
-          err.message,
-          /Lifecycle dependency violation: singleton service .* cannot depend on scoped service .* Singletons cannot depend on scoped services\./
-        );
-        return true;
-      }
-    );
+    await assert.rejects(diContainer.resolve(SINGLETON_TOKEN), (err: Error) => {
+      assert.match(
+        err.message,
+        /Lifecycle dependency violation: singleton service .* cannot depend on scoped service .* Singletons cannot depend on scoped services\./
+      );
+      return true;
+    });
   });
 
   it("should throw LifecycleDependencyViolationError when singleton depends on scoped service via resolveRequired", async () => {
@@ -2791,16 +2748,13 @@ describe("DIContainer | Lifecycle Dependency Validation", () => {
 
     diContainer = await diConfigurator.build();
 
-    await assert.rejects(
-      diContainer.resolve(SINGLETON_TOKEN),
-      (err: Error) => {
-        assert.match(
-          err.message,
-          /Lifecycle dependency violation: singleton service .* cannot depend on scoped service .* Singletons cannot depend on scoped services\./
-        );
-        return true;
-      }
-    );
+    await assert.rejects(diContainer.resolve(SINGLETON_TOKEN), (err: Error) => {
+      assert.match(
+        err.message,
+        /Lifecycle dependency violation: singleton service .* cannot depend on scoped service .* Singletons cannot depend on scoped services\./
+      );
+      return true;
+    });
   });
 
   it("should throw LifecycleDependencyViolationError when singleton depends on scoped service via resolveAll", async () => {
@@ -2815,16 +2769,13 @@ describe("DIContainer | Lifecycle Dependency Validation", () => {
 
     diContainer = await diConfigurator.build();
 
-    await assert.rejects(
-      diContainer.resolve(SINGLETON_TOKEN),
-      (err: Error) => {
-        assert.match(
-          err.message,
-          /Lifecycle dependency violation: singleton service .* cannot depend on scoped service .* Singletons cannot depend on scoped services\./
-        );
-        return true;
-      }
-    );
+    await assert.rejects(diContainer.resolve(SINGLETON_TOKEN), (err: Error) => {
+      assert.match(
+        err.message,
+        /Lifecycle dependency violation: singleton service .* cannot depend on scoped service .* Singletons cannot depend on scoped services\./
+      );
+      return true;
+    });
   });
 
   it("should allow singleton to depend on transient service", async () => {
@@ -2843,7 +2794,7 @@ describe("DIContainer | Lifecycle Dependency Validation", () => {
     assert.ok(singleton);
     assert.deepEqual(singleton, {
       name: "singleton-service",
-      dependency: { name: "transient-service" }
+      dependency: { name: "transient-service" },
     });
   });
 
@@ -2864,7 +2815,7 @@ describe("DIContainer | Lifecycle Dependency Validation", () => {
       assert.ok(transient);
       assert.deepEqual(transient, {
         name: "transient-service",
-        dependency: { name: "scoped-service" }
+        dependency: { name: "scoped-service" },
       });
     });
   });
@@ -2886,7 +2837,7 @@ describe("DIContainer | Lifecycle Dependency Validation", () => {
       assert.ok(scoped);
       assert.deepEqual(scoped, {
         name: "scoped-service",
-        dependency: { name: "singleton-service" }
+        dependency: { name: "singleton-service" },
       });
     });
   });
@@ -2910,15 +2861,12 @@ describe("DIContainer | Lifecycle Dependency Validation", () => {
 
     diContainer = await diConfigurator.build();
 
-    await assert.rejects(
-      diContainer.resolve(SINGLETON_TOKEN),
-      (err: Error) => {
-        assert.match(
-          err.message,
-          /Lifecycle dependency violation: singleton service .* cannot depend on scoped service .* Singletons cannot depend on scoped services\./
-        );
-        return true;
-      }
-    );
+    await assert.rejects(diContainer.resolve(SINGLETON_TOKEN), (err: Error) => {
+      assert.match(
+        err.message,
+        /Lifecycle dependency violation: singleton service .* cannot depend on scoped service .* Singletons cannot depend on scoped services\./
+      );
+      return true;
+    });
   });
 });

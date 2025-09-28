@@ -1,5 +1,5 @@
-import { DiConfigurator } from "../src";
 import { AsyncContextStore } from "@apiratorjs/async-context";
+import { DiConfigurator } from "../src";
 import { IOnConstruct, IOnDispose } from "../src/types";
 
 (async () => {

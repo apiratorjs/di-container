@@ -1,6 +1,4 @@
 import { AsyncContextStore } from "@apiratorjs/async-context";
-import { DiContainer } from "./di-container";
-import { DiDiscoveryService } from "./di-discovery-service";
 
 export type TClassType<T = any> = new (...args: any[]) => T;
 /**
@@ -63,41 +61,29 @@ export interface IInitableDiContainer extends IDiContainer {
   init(): Promise<void>;
 }
 
-export interface IDiModule {
-  register(configurator: IDiConfigurator): void;
-}
-
-export type TLifetime = "singleton" | "scoped" | "transient";
-
-export interface IModuleOptions {
-  imports?: IDiModule[];
-  providers?: Array<{
-    token: TServiceToken;
-    useFactory: (container: IDiContainer) => Promise<any> | any;
-    lifetime: TLifetime;
-    singletonOptions?: ISingletonOptions;
-    tag?: string;
-  }>;
+export enum ELifetime {
+  Singleton = "singleton",
+  Scoped = "scoped",
+  Transient = "transient",
 }
 
 export interface IDiConfigurator {
   addSingleton<T>(
     token: TServiceToken,
     factory: (container: IDiContainer) => Promise<T> | T,
-    singletonOptions?: ISingletonOptions,
-    tag?: string
+    options?: ISingletonServiceRegistrationOptions
   ): this;
 
   addScoped<T>(
     token: TServiceToken,
     factory: (diContainer: IDiContainer) => Promise<T> | T,
-    tag?: string
+    options?: IScopedServiceRegistrationOptions
   ): this;
 
   addTransient<T>(
     token: TServiceToken,
     factory: (diContainer: IDiContainer) => Promise<T> | T,
-    tag?: string
+    options?: ITransientServiceRegistrationOptions
   ): this;
 
   addModule(module: IDiModule): this;
@@ -123,7 +109,7 @@ export type TUseFactory<T> = (diContainer: IDiContainer) => Promise<T> | T;
 export interface IServiceRegistration<T = any> {
   token: TServiceToken<T>;
   tokenType: TServiceTokenType;
-  lifetime: TLifetime;
+  lifetime: ELifetime;
   factory: TUseFactory<T>;
   singletonOptions?: ISingletonOptions;
   isResolved: boolean;
@@ -142,5 +128,24 @@ export interface IDiDiscoveryService {
   getServicesByServiceToken(
     serviceToken: TServiceToken
   ): IServiceRegistration[];
-  getServicesByLifetime(lifetime: TLifetime): IServiceRegistration[];
+  getServicesByLifetime(lifetime: ELifetime): IServiceRegistration[];
 }
+
+export interface IDiModule {
+  register(configurator: IDiConfigurator): void;
+}
+
+export interface IServiceRegistrationOptions {
+  tag?: string;
+}
+
+export interface ISingletonServiceRegistrationOptions
+  extends IServiceRegistrationOptions {
+  eager?: boolean;
+}
+
+export interface IScopedServiceRegistrationOptions
+  extends IServiceRegistrationOptions {}
+
+export interface ITransientServiceRegistrationOptions
+  extends IServiceRegistrationOptions {}
