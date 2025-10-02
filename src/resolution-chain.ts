@@ -42,7 +42,14 @@ export class ResolutionChain {
   }
 
   private checkForCircularDependency(link: IResolutionChainLink): void {
-    if (this._chain.some((t) => t.token === link.token)) {
+    if (
+      this._chain.some(
+        (t) =>
+          t.token === link.token &&
+          t.lifetime === link.lifetime &&
+          t.tag === link.tag
+      )
+    ) {
       const cycle = this._chain
         .map((t) => tokenToString(t.token))
         .concat(tokenToString(link.token));
