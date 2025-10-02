@@ -1,38 +1,34 @@
 import { AsyncContext, AsyncContextStore } from "@apiratorjs/async-context";
 import {
+  ELifetime,
   IDiContainer,
   IInitableDiContainer,
   IOnConstruct,
   IOnDispose,
-  ELifetime,
+  IResolutionChainLink,
   IResolveAllResult,
+  IServiceRegistration,
   TServiceToken,
 } from "./types";
 import { DiDiscoveryService } from "./di-discovery-service";
-import {
-  DI_CONTAINER_REQUEST_SCOPE_NAMESPACE,
-  DiConfigurator,
-} from "./di-configurator";
+import { DiConfigurator } from "./di-configurator";
 import { Mutex } from "@apiratorjs/locking";
 import {
-  CircularDependencyError,
-  LifecycleDependencyViolationError,
   RequestScopeResolutionError,
   UnregisteredDependencyError,
 } from "./errors";
 import { normalizeTagToCompatibleFormat, tokenToString } from "./utils";
+import { ServiceRegistration } from "./service-registration";
+import { ResolutionChain } from "./resolution-chain";
+import {
+  DEFAULT_TAG,
+  DI_CONTAINER_REQUEST_SCOPE_NAMESPACE,
+  DI_CONTAINER_RESOLUTION_CHAIN_NAMESPACE,
+} from "./constants";
 
 export class DiContainer implements IInitableDiContainer {
   private _isInitialized = false;
-  private readonly _serviceMutexes = new Map<TServiceToken, Mutex>();
-  private readonly _resolutionChains = new Map<
-    AsyncContextStore | undefined,
-    Set<TServiceToken>
-  >();
-  private readonly _lifecycleResolutionContext = new Map<
-    AsyncContextStore | undefined,
-    Map<TServiceToken, ELifetime>
-  >();
+  private readonly _serviceMutexes: Map<string, Mutex> = new Map();
 
   public constructor(private readonly _diConfigurator: DiConfigurator) {}
 
@@ -40,30 +36,17 @@ export class DiContainer implements IInitableDiContainer {
     token: TServiceToken<T>,
     tag?: string
   ): Promise<T | undefined> {
-    this.checkForCircularDependency(token);
+    if (this.getCurrentResolutionChain()) {
+      return await this.runResolution<T>(token, tag);
+    }
 
-    const mutex = this.getMutexFor(token);
-
-    return await mutex.runExclusive(async () => {
-      try {
-        this.addToResolutionChain(token);
-
-        if (this._diConfigurator.requestScopeServiceRegistry.has(token)) {
-          this.checkForLifecycleDependencyViolation(token, ELifetime.Scoped);
-        }
-
-        return (
-          (await this.tryGetSingleton<T>(token, tag)) ??
-          (await this.tryGetScoped<T>(token, tag)) ??
-          (await this.tryGetTransient<T>(token, tag)) ??
-          (function (): never {
-            throw new UnregisteredDependencyError(token);
-          })()
-        );
-      } finally {
-        this.removeFromResolutionChain(token);
+    return await AsyncContext.withContext(
+      DI_CONTAINER_RESOLUTION_CHAIN_NAMESPACE,
+      new ResolutionChain(),
+      async () => {
+        return await this.runResolution<T>(token, tag);
       }
-    });
+    );
   }
 
   public async resolveRequired<T>(
@@ -81,39 +64,17 @@ export class DiContainer implements IInitableDiContainer {
   public async resolveAll<T>(
     token: TServiceToken<T>
   ): Promise<IResolveAllResult<T>[]> {
-    this.checkForCircularDependency(token);
+    if (this.getCurrentResolutionChain()) {
+      return this.runResolutionAll<T>(token);
+    }
 
-    const mutex = this.getMutexFor(token);
-
-    return await mutex.runExclusive(async () => {
-      try {
-        this.addToResolutionChain(token);
-
-        // Check for lifecycle dependency violations before trying to resolve
-        if (this._diConfigurator.requestScopeServiceRegistry.has(token)) {
-          this.checkForLifecycleDependencyViolation(token, ELifetime.Scoped);
-        }
-
-        const singletonServices = await this.getSingletonAll<T>(token);
-        if (singletonServices.length > 0) {
-          return singletonServices;
-        }
-
-        const scopedServices = await this.getScopedAll<T>(token);
-        if (scopedServices.length > 0) {
-          return scopedServices;
-        }
-
-        const transientServices = await this.getTransientAll<T>(token);
-        if (transientServices.length > 0) {
-          return transientServices;
-        }
-
-        throw new UnregisteredDependencyError(token);
-      } finally {
-        this.removeFromResolutionChain(token);
+    return await AsyncContext.withContext(
+      DI_CONTAINER_RESOLUTION_CHAIN_NAMESPACE,
+      new ResolutionChain(),
+      async () => {
+        return this.runResolutionAll<T>(token);
       }
-    });
+    );
   }
 
   public async resolveTagged<T>(tag: string): Promise<T | undefined> {
@@ -200,52 +161,69 @@ export class DiContainer implements IInitableDiContainer {
   }
 
   public async disposeSingletons() {
-    await Promise.all(
-      Array.from(this._diConfigurator.singletonServiceRegistry.entries()).map(
-        async ([token, serviceList]) => {
-          const mutex = this.getMutexFor(token);
+    const disposalPromises: Promise<void>[] = [];
 
-          await mutex.runExclusive(async () => {
-            for (const serviceRegistration of serviceList) {
-              if (serviceRegistration.isResolved) {
-                const instance = serviceRegistration.getInstance();
-                if ("onDispose" in instance) {
-                  await (instance as IOnDispose).onDispose();
-                }
-                serviceRegistration.clearInstance();
-              }
+    for (const [
+      token,
+      serviceRegistrations,
+    ] of this._diConfigurator.singletonServiceRegistry.entries()) {
+      for (const serviceRegistration of serviceRegistrations) {
+        const normalizedTag = normalizeTagToCompatibleFormat(
+          serviceRegistration.tag
+        );
+        const mutexToken = this.createMutexTokenOf(token, normalizedTag);
+        const mutex = this.getMutexFor(mutexToken);
+
+        const disposalPromise = mutex.runExclusive(async () => {
+          if (serviceRegistration.isResolved) {
+            const instance = serviceRegistration.getInstance();
+            if ("onDispose" in instance) {
+              await (instance as IOnDispose).onDispose();
             }
-          });
-        }
-      )
-    );
+            serviceRegistration.clearInstance();
+          }
+        });
+
+        disposalPromises.push(disposalPromise);
+      }
+    }
+
+    await Promise.all(disposalPromises);
   }
 
   public async disposeScopedServices(): Promise<void> {
-    const scope = this.getRequestScopeContext();
-    if (!scope) {
+    if (!this.isInRequestScopeContext()) {
       return;
     }
 
-    await Promise.all(
-      Array.from(
-        this._diConfigurator.requestScopeServiceRegistry.entries()
-      ).map(async ([token, serviceList]) => {
-        const mutex = this.getMutexFor(token);
+    const disposalPromises: Promise<void>[] = [];
 
-        await mutex.runExclusive(async () => {
-          for (const serviceRegistration of serviceList) {
-            if (serviceRegistration.isResolved) {
-              const instance = serviceRegistration.getInstance();
-              if ("onDispose" in instance) {
-                await (instance as IOnDispose).onDispose();
-              }
-              serviceRegistration.clearInstance();
+    for (const [
+      token,
+      serviceRegistrations,
+    ] of this._diConfigurator.requestScopeServiceRegistry.entries()) {
+      for (const serviceRegistration of serviceRegistrations) {
+        const normalizedTag = normalizeTagToCompatibleFormat(
+          serviceRegistration.tag
+        );
+        const mutexToken = this.createMutexTokenOf(token, normalizedTag);
+        const mutex = this.getMutexFor(mutexToken);
+
+        const disposalPromise = mutex.runExclusive(async () => {
+          if (serviceRegistration.isResolved) {
+            const instance = serviceRegistration.getInstance();
+            if ("onDispose" in instance) {
+              await (instance as IOnDispose).onDispose();
             }
+            serviceRegistration.clearInstance();
           }
         });
-      })
-    );
+
+        disposalPromises.push(disposalPromise);
+      }
+    }
+
+    await Promise.all(disposalPromises);
   }
 
   public async init(): Promise<void> {
@@ -253,21 +231,63 @@ export class DiContainer implements IInitableDiContainer {
       return;
     }
 
-    for (const [
-      token,
-      serviceRegistrationList,
-    ] of this._diConfigurator.singletonServiceRegistry.entries()) {
-      for (const serviceRegistration of serviceRegistrationList) {
-        if (serviceRegistration.singletonOptions?.eager) {
-          await this.tryGetSingleton(token, serviceRegistration.tag);
+    // Create a resolution context for initialization
+    await AsyncContext.withContext(
+      DI_CONTAINER_RESOLUTION_CHAIN_NAMESPACE,
+      new ResolutionChain(),
+      async () => {
+        for (const [
+          token,
+          serviceRegistrations,
+        ] of this._diConfigurator.singletonServiceRegistry.entries()) {
+          for (const serviceRegistration of serviceRegistrations) {
+            if (serviceRegistration.singletonOptions?.eager) {
+              await this.tryGetSingleton(token, serviceRegistration.tag);
+            }
+          }
         }
       }
-    }
+    );
 
     this._isInitialized = true;
   }
 
-  private getMutexFor(token: TServiceToken): Mutex {
+  private async runResolution<T>(
+    token: TServiceToken,
+    tag?: string
+  ): Promise<T | undefined> {
+    return (
+      (await this.tryGetSingleton<T>(token, tag)) ??
+      (await this.tryGetScoped<T>(token, tag)) ??
+      (await this.tryGetTransient<T>(token, tag)) ??
+      (function (): never {
+        throw new UnregisteredDependencyError(token);
+      })()
+    );
+  }
+
+  private async runResolutionAll<T>(
+    token: TServiceToken
+  ): Promise<IResolveAllResult<T>[]> {
+    const singletonServices = await this.getSingletonAll<T>(token);
+    if (singletonServices.length > 0) {
+      return singletonServices;
+    }
+
+    const scopedServices = await this.getScopedAll<T>(token);
+    if (scopedServices.length > 0) {
+      return scopedServices;
+    }
+
+    const transientServices = await this.getTransientAll<T>(token);
+    if (transientServices.length > 0) {
+      return transientServices;
+    }
+
+    throw new UnregisteredDependencyError(token);
+  }
+
+  private getMutexFor(token: string): Mutex {
     if (!this._serviceMutexes.has(token)) {
       this._serviceMutexes.set(token, new Mutex());
     }
@@ -279,23 +299,11 @@ export class DiContainer implements IInitableDiContainer {
     token: TServiceToken,
     tag?: string
   ): Promise<T | undefined> {
-    const serviceRegistrationList =
-      this._diConfigurator.singletonServiceRegistry.get(token);
-    if (!serviceRegistrationList?.length) {
-      return;
-    }
-
-    const normalizedTag = normalizeTagToCompatibleFormat(tag ?? "default");
-
-    const serviceRegistration = serviceRegistrationList.find(
-      (serviceRegistration) => {
-        return (
-          normalizeTagToCompatibleFormat(serviceRegistration.tag) ===
-          normalizedTag
-        );
-      }
+    const serviceRegistration = this.findServiceRegistration(
+      ELifetime.Singleton,
+      token,
+      tag
     );
-
     if (!serviceRegistration) {
       return;
     }
@@ -308,19 +316,40 @@ export class DiContainer implements IInitableDiContainer {
       return;
     }
 
-    try {
-      this.addToLifecycleContext(token, ELifetime.Singleton);
-      const serviceInstance = await serviceRegistration.factory(this);
-      if ((serviceInstance as IOnConstruct)?.onConstruct) {
-        await (serviceInstance as IOnConstruct).onConstruct();
+    const chainLink: IResolutionChainLink = {
+      token,
+      lifetime: ELifetime.Singleton,
+      tag: normalizeTagToCompatibleFormat(tag),
+    };
+
+    this.getCurrentResolution().checkForDependencyViolation(chainLink);
+
+    const mutexToken = this.createMutexTokenOf(token, tag);
+    const mutex = this.getMutexFor(mutexToken);
+
+    return await mutex.runExclusive(async () => {
+      try {
+        this.addToResolutionChainFor(chainLink);
+
+        // Double check if the service is resolved in a concurrent thread
+        if (serviceRegistration.isResolved) {
+          return serviceRegistration.getInstance();
+        }
+
+        const serviceInstance = await serviceRegistration.factory(this);
+        if ((serviceInstance as IOnConstruct)?.onConstruct) {
+          await (serviceInstance as IOnConstruct).onConstruct();
+        }
+
+        (serviceRegistration as ServiceRegistration<T>).setInstance(
+          serviceInstance
+        );
+
+        return serviceInstance;
+      } finally {
+        this.removeFromResolutionChainFor(chainLink);
       }
-
-      serviceRegistration.setInstance(serviceInstance);
-
-      return serviceInstance;
-    } finally {
-      this.removeFromLifecycleContext(token);
-    }
+    });
   }
 
   private async getSingletonAll<T>(
@@ -345,12 +374,40 @@ export class DiContainer implements IInitableDiContainer {
           continue;
         }
 
-        const serviceInstance = await serviceRegistration.factory(this);
-        if ((serviceInstance as IOnConstruct)?.onConstruct) {
-          await (serviceInstance as IOnConstruct).onConstruct();
-        }
+        const chainLink: IResolutionChainLink = {
+          token,
+          lifetime: ELifetime.Singleton,
+          tag: normalizeTagToCompatibleFormat(serviceRegistration.tag),
+        };
 
-        serviceRegistration.setInstance(serviceInstance);
+        this.getCurrentResolution().checkForDependencyViolation(chainLink);
+
+        const mutexToken = this.createMutexTokenOf(
+          token,
+          serviceRegistration.tag
+        );
+        const mutex = this.getMutexFor(mutexToken);
+
+        const serviceInstance = await mutex.runExclusive(async () => {
+          try {
+            this.addToResolutionChainFor(chainLink);
+
+            // Double check if the service is resolved in a concurrent thread
+            if (serviceRegistration.isResolved) {
+              return serviceRegistration.getInstance();
+            }
+
+            const instance = await serviceRegistration.factory(this);
+            if ((instance as IOnConstruct)?.onConstruct) {
+              await (instance as IOnConstruct).onConstruct();
+            }
+
+            serviceRegistration.setInstance(instance);
+            return instance;
+          } finally {
+            this.removeFromResolutionChainFor(chainLink);
+          }
+        });
 
         services.push({
           registration: serviceRegistration,
@@ -366,29 +423,18 @@ export class DiContainer implements IInitableDiContainer {
     token: TServiceToken,
     tag?: string
   ): Promise<T | undefined> {
-    const serviceRegistrationList =
-      this._diConfigurator.requestScopeServiceRegistry.get(token);
-    if (!serviceRegistrationList?.length) {
-      return;
-    }
-
-    const normalizedTag = normalizeTagToCompatibleFormat(tag ?? "default");
-
-    const serviceRegistration = serviceRegistrationList.find(
-      (serviceRegistration) => {
-        return (
-          normalizeTagToCompatibleFormat(serviceRegistration.tag) ===
-          normalizedTag
-        );
-      }
+    const serviceRegistration = this.findServiceRegistration(
+      ELifetime.Scoped,
+      token,
+      tag
     );
-
     if (!serviceRegistration) {
       return;
     }
 
-    const store = this.getRequestScopeContext();
-    if (!store) {
+    // Check scope context after finding the service registration to prevent unexpected calling
+    // when trying to resolve another service from a different lifecycle
+    if (!this.isInRequestScopeContext()) {
       throw new RequestScopeResolutionError(token);
     }
 
@@ -400,19 +446,40 @@ export class DiContainer implements IInitableDiContainer {
       return;
     }
 
-    try {
-      this.addToLifecycleContext(token, ELifetime.Scoped);
-      const serviceInstance = await serviceRegistration.factory(this);
-      if ((serviceInstance as IOnConstruct)?.onConstruct) {
-        await (serviceInstance as IOnConstruct).onConstruct();
+    const chainLink: IResolutionChainLink = {
+      token,
+      lifetime: ELifetime.Scoped,
+      tag: normalizeTagToCompatibleFormat(tag),
+    };
+
+    this.getCurrentResolution().checkForDependencyViolation(chainLink);
+
+    const mutexToken = this.createMutexTokenOf(token, tag);
+    const mutex = this.getMutexFor(mutexToken);
+
+    return await mutex.runExclusive(async () => {
+      try {
+        this.addToResolutionChainFor(chainLink);
+
+        // Double check if the service is resolved in a concurrent thread
+        if (serviceRegistration.isResolved) {
+          return serviceRegistration.getInstance();
+        }
+
+        const serviceInstance = await serviceRegistration.factory(this);
+        if ((serviceInstance as IOnConstruct)?.onConstruct) {
+          await (serviceInstance as IOnConstruct).onConstruct();
+        }
+
+        (serviceRegistration as ServiceRegistration<T>).setInstance(
+          serviceInstance
+        );
+
+        return serviceInstance;
+      } finally {
+        this.removeFromResolutionChainFor(chainLink);
       }
-
-      serviceRegistration.setInstance(serviceInstance);
-
-      return serviceInstance;
-    } finally {
-      this.removeFromLifecycleContext(token);
-    }
+    });
   }
 
   private async getScopedAll<T>(
@@ -424,8 +491,9 @@ export class DiContainer implements IInitableDiContainer {
       return [];
     }
 
-    const store = this.getRequestScopeContext();
-    if (!store) {
+    // Check scope context after finding the service registration list to prevent unexpected calling
+    // when trying to resolve another service from a different lifecycle
+    if (!this.isInRequestScopeContext()) {
       throw new RequestScopeResolutionError(token);
     }
 
@@ -442,12 +510,40 @@ export class DiContainer implements IInitableDiContainer {
           continue;
         }
 
-        const serviceInstance = await serviceRegistration.factory(this);
-        if ((serviceInstance as IOnConstruct)?.onConstruct) {
-          await (serviceInstance as IOnConstruct).onConstruct();
-        }
+        const chainLink: IResolutionChainLink = {
+          token,
+          lifetime: ELifetime.Scoped,
+          tag: normalizeTagToCompatibleFormat(serviceRegistration.tag),
+        };
 
-        serviceRegistration.setInstance(serviceInstance);
+        this.getCurrentResolution().checkForDependencyViolation(chainLink);
+
+        const mutexToken = this.createMutexTokenOf(
+          token,
+          serviceRegistration.tag
+        );
+        const mutex = this.getMutexFor(mutexToken);
+
+        const serviceInstance = await mutex.runExclusive(async () => {
+          try {
+            this.addToResolutionChainFor(chainLink);
+
+            // Double check if the service is resolved in a concurrent thread
+            if (serviceRegistration.isResolved) {
+              return serviceRegistration.getInstance();
+            }
+
+            const instance = await serviceRegistration.factory(this);
+            if ((instance as IOnConstruct)?.onConstruct) {
+              await (instance as IOnConstruct).onConstruct();
+            }
+
+            serviceRegistration.setInstance(instance);
+            return instance;
+          } finally {
+            this.removeFromResolutionChainFor(chainLink);
+          }
+        });
 
         services.push({
           registration: serviceRegistration,
@@ -463,29 +559,24 @@ export class DiContainer implements IInitableDiContainer {
     token: TServiceToken,
     tag?: string
   ): Promise<T | undefined> {
-    const serviceRegistrationList =
-      this._diConfigurator.transientServiceRegistry.get(token);
-    if (!serviceRegistrationList?.length) {
-      return;
-    }
-
-    const normalizedTag = normalizeTagToCompatibleFormat(tag ?? "default");
-
-    const serviceRegistration = serviceRegistrationList.find(
-      (serviceRegistration) => {
-        return (
-          normalizeTagToCompatibleFormat(serviceRegistration.tag) ===
-          normalizedTag
-        );
-      }
+    const serviceRegistration = this.findServiceRegistration(
+      ELifetime.Transient,
+      token,
+      tag
     );
-
     if (!serviceRegistration) {
       return;
     }
 
+    const chainLink: IResolutionChainLink = {
+      token,
+      lifetime: ELifetime.Transient,
+      tag: normalizeTagToCompatibleFormat(tag),
+    };
+
+    this.addToResolutionChainFor(chainLink);
+
     try {
-      this.addToLifecycleContext(token, ELifetime.Transient);
       const serviceInstance = await serviceRegistration.factory(this);
       if ((serviceInstance as IOnConstruct)?.onConstruct) {
         await (serviceInstance as IOnConstruct).onConstruct();
@@ -493,7 +584,7 @@ export class DiContainer implements IInitableDiContainer {
 
       return serviceInstance;
     } finally {
-      this.removeFromLifecycleContext(token);
+      this.removeFromResolutionChainFor(chainLink);
     }
   }
 
@@ -509,100 +600,87 @@ export class DiContainer implements IInitableDiContainer {
     const services: IResolveAllResult<T>[] = [];
 
     for (const serviceRegistration of serviceRegistrationList) {
-      const serviceInstance = await serviceRegistration.factory(this);
-      if ((serviceInstance as IOnConstruct)?.onConstruct) {
-        await (serviceInstance as IOnConstruct).onConstruct();
-      }
+      const chainLink: IResolutionChainLink = {
+        token,
+        lifetime: ELifetime.Transient,
+        tag: normalizeTagToCompatibleFormat(serviceRegistration.tag),
+      };
 
-      services.push({
-        registration: serviceRegistration,
-        instance: serviceInstance,
-      });
+      this.addToResolutionChainFor(chainLink);
+
+      try {
+        const serviceInstance = await serviceRegistration.factory(this);
+        if ((serviceInstance as IOnConstruct)?.onConstruct) {
+          await (serviceInstance as IOnConstruct).onConstruct();
+        }
+
+        services.push({
+          registration: serviceRegistration,
+          instance: serviceInstance,
+        });
+      } finally {
+        this.removeFromResolutionChainFor(chainLink);
+      }
     }
 
     return services;
   }
 
-  // ============================
-  // Circular dependency detection
-  // ============================
-
-  private getCurrentResolutionChain(): Set<TServiceToken> {
-    const currentScope = this.getRequestScopeContext();
-    if (!this._resolutionChains.has(currentScope)) {
-      this._resolutionChains.set(currentScope, new Set<TServiceToken>());
-    }
-    return this._resolutionChains.get(currentScope)!;
-  }
-
-  private addToResolutionChain(token: TServiceToken): void {
-    this.getCurrentResolutionChain().add(token);
-  }
-
-  private removeFromResolutionChain(token: TServiceToken): void {
-    this.getCurrentResolutionChain().delete(token);
-  }
-
-  private checkForCircularDependency(token: TServiceToken): void {
-    const currentChain = this.getCurrentResolutionChain();
-
-    if (currentChain.has(token)) {
-      const chainTokens = Array.from(currentChain);
-
-      const startIndex = chainTokens.findIndex((t) => t === token);
-
-      const cycle = [...chainTokens.slice(startIndex), token].map((t) =>
-        tokenToString(t)
-      );
-
-      throw new CircularDependencyError(token, cycle);
-    }
-  }
-
-  // ============================
-  // Lifecycle dependency validation
-  // ============================
-
-  private getCurrentLifecycleContext(): Map<TServiceToken, ELifetime> {
-    const currentScope = this.getRequestScopeContext();
-    if (!this._lifecycleResolutionContext.has(currentScope)) {
-      this._lifecycleResolutionContext.set(
-        currentScope,
-        new Map<TServiceToken, ELifetime>()
-      );
-    }
-    return this._lifecycleResolutionContext.get(currentScope)!;
-  }
-
-  private addToLifecycleContext(
+  private findServiceRegistration(
+    lifetime: ELifetime,
     token: TServiceToken,
-    lifetime: ELifetime
-  ): void {
-    this.getCurrentLifecycleContext().set(token, lifetime);
-  }
+    tag?: string
+  ): IServiceRegistration | undefined {
+    const normalizedTag = normalizeTagToCompatibleFormat(tag);
 
-  private removeFromLifecycleContext(token: TServiceToken): void {
-    this.getCurrentLifecycleContext().delete(token);
-  }
-
-  private checkForLifecycleDependencyViolation(
-    token: TServiceToken,
-    requestedLifetime: ELifetime
-  ): void {
-    const currentContext = this.getCurrentLifecycleContext();
-
-    for (const [
-      dependentToken,
-      dependentLifetime,
-    ] of currentContext.entries()) {
-      if (dependentLifetime === "singleton" && requestedLifetime === "scoped") {
-        throw new LifecycleDependencyViolationError(
-          dependentToken,
-          dependentLifetime,
-          token,
-          requestedLifetime
-        );
-      }
+    let registry: Map<TServiceToken, ServiceRegistration[]>;
+    switch (lifetime) {
+      case ELifetime.Singleton:
+        registry = this._diConfigurator.singletonServiceRegistry;
+        break;
+      case ELifetime.Scoped:
+        registry = this._diConfigurator.requestScopeServiceRegistry;
+        break;
+      case ELifetime.Transient:
+        registry = this._diConfigurator.transientServiceRegistry;
+        break;
     }
+
+    return registry.get(token)?.find((serviceRegistration) => {
+      return (
+        normalizeTagToCompatibleFormat(serviceRegistration.tag) ===
+        normalizedTag
+      );
+    });
+  }
+
+  private createMutexTokenOf(token: TServiceToken, tag?: string): string {
+    return `${tokenToString(token)}-${tag ?? DEFAULT_TAG}`;
+  }
+
+  // ============================
+  // Resolution chain management
+  // ============================
+
+  private getCurrentResolutionChain(): ResolutionChain | undefined {
+    return AsyncContext.getContext(DI_CONTAINER_RESOLUTION_CHAIN_NAMESPACE) as
+      | ResolutionChain
+      | undefined;
+  }
+
+  private getCurrentResolution(): ResolutionChain {
+    const chain = this.getCurrentResolutionChain();
+    if (!chain) {
+      throw new Error("No resolution chain found. This should not happen.");
+    }
+    return chain;
+  }
+
+  private addToResolutionChainFor(link: IResolutionChainLink): void {
+    this.getCurrentResolution().addLink(link);
+  }
+
+  private removeFromResolutionChainFor(link: IResolutionChainLink): void {
+    this.getCurrentResolution().removeLink(link);
   }
 }

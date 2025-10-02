@@ -68,7 +68,7 @@ export class UnknownLifetimeError extends DependencyInjectionError {
   }
 }
 
-export class LifecycleDependencyViolationError extends DependencyInjectionError {
+export class LifecycleSingletonScopedDependencyViolationError extends DependencyInjectionError {
   constructor(
     public readonly dependentToken: TServiceToken,
     public readonly dependentLifetime: ELifetime,

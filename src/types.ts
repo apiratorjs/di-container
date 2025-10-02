@@ -149,3 +149,9 @@ export interface IScopedServiceRegistrationOptions
 
 export interface ITransientServiceRegistrationOptions
   extends IServiceRegistrationOptions {}
+
+export interface IResolutionChainLink {
+  token: TServiceToken;
+  lifetime: ELifetime;
+  tag?: string;
+}

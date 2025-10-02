@@ -371,12 +371,101 @@ describe("DiContainer", () => {
     });
   });
 
+  describe("Concurrent resolution with Promise.all", () => {
+    it("should not throw CircularDependencyError for concurrent non-circular dependencies", async () => {
+      class ServiceA {
+        constructor(public b: ServiceB, public c: ServiceC) {}
+      }
+
+      class ServiceB {
+        constructor(public c: ServiceC) {}
+      }
+
+      class ServiceC {
+        constructor() {}
+      }
+
+      const ServiceAToken = Symbol("ServiceA");
+      const ServiceBToken = Symbol("ServiceB");
+      const ServiceCToken = Symbol("ServiceC");
+
+      diConfigurator.addTransient(ServiceCToken, async () => new ServiceC());
+
+      diConfigurator.addTransient(
+        ServiceBToken,
+        async (container: IDiContainer) => {
+          const c = (await container.resolveRequired(
+            ServiceCToken
+          )) as ServiceC;
+          return new ServiceB(c);
+        }
+      );
+
+      diConfigurator.addTransient(
+        ServiceAToken,
+        async (container: IDiContainer) => {
+          const [b, c] = await Promise.all([
+            container.resolveRequired(ServiceBToken) as Promise<ServiceB>,
+            container.resolveRequired(ServiceCToken) as Promise<ServiceC>,
+          ]);
+          return new ServiceA(b, c);
+        }
+      );
+
+      diContainer = new DiContainer(diConfigurator);
+
+      const serviceA = await diContainer.resolveRequired(ServiceAToken);
+
+      assert.ok(serviceA instanceof ServiceA);
+      assert.ok(serviceA.b instanceof ServiceB);
+      assert.ok(serviceA.c instanceof ServiceC);
+      assert.ok(serviceA.b.c instanceof ServiceC);
+    });
+
+    it("should handle deeply nested concurrent resolutions", async () => {
+      const ServiceDToken = Symbol("ServiceD");
+      const ServiceEToken = Symbol("ServiceE");
+      const ServiceFToken = Symbol("ServiceF");
+
+      diConfigurator.addTransient(ServiceFToken, async () => ({ name: "F" }));
+
+      diConfigurator.addTransient(
+        ServiceEToken,
+        async (container: IDiContainer) => {
+          const f = await container.resolveRequired(ServiceFToken);
+          return { name: "E", dependency: f };
+        }
+      );
+
+      diConfigurator.addTransient(
+        ServiceDToken,
+        async (container: IDiContainer) => {
+          const [e, f] = await Promise.all([
+            container.resolveRequired(ServiceEToken),
+            container.resolveRequired(ServiceFToken),
+          ]);
+          return { name: "D", e, f };
+        }
+      );
+
+      diContainer = new DiContainer(diConfigurator);
+
+      const serviceD = (await diContainer.resolveRequired(
+        ServiceDToken
+      )) as any;
+
+      assert.strictEqual(serviceD.name, "D");
+      assert.strictEqual(serviceD.e.name, "E");
+      assert.strictEqual(serviceD.f.name, "F");
+      assert.strictEqual(serviceD.e.dependency.name, "F");
+    });
+  });
+
   describe("Circular Dependencies", () => {
     it("should detect and throw CircularDependencyError for direct circular dependency", async () => {
       const CIRCULAR_A = "CIRCULAR_A";
       const CIRCULAR_B = "CIRCULAR_B";
 
-      // A depends on B, B depends on A
       diConfigurator.addSingleton(CIRCULAR_A, async (di) => {
         await di.resolve(CIRCULAR_B);
         return { name: "service-a" };
@@ -406,7 +495,6 @@ describe("DiContainer", () => {
       const CIRCULAR_C = "CIRCULAR_C";
       const CIRCULAR_D = "CIRCULAR_D";
 
-      // Service B depends on C, C depends on D, D depends on B (creating a cycle)
       diConfigurator.addSingleton(CIRCULAR_B, async (di) => {
         await di.resolve(CIRCULAR_C);
         return { name: "service-b" };
@@ -449,7 +537,6 @@ describe("DiContainer", () => {
         return { name: "service-b" };
       });
 
-      // This should not throw
       const serviceA = await diContainer.resolve(NON_CIRCULAR_A);
       assert.deepEqual(serviceA, { name: "service-a" });
     });
@@ -699,41 +786,6 @@ describe("DiContainer", () => {
       );
     });
 
-    it("should dispose multiple singleton services concurrently", async () => {
-      const disposalOrder: number[] = [];
-      const DISPOSABLE_1 = "DISPOSABLE_1";
-      const DISPOSABLE_2 = "DISPOSABLE_2";
-
-      diConfigurator.addSingleton(DISPOSABLE_1, async () => ({
-        async onDispose() {
-          await new Promise((resolve) => setTimeout(resolve, 20));
-          disposalOrder.push(1);
-        },
-      }));
-
-      diConfigurator.addSingleton(DISPOSABLE_2, async () => ({
-        async onDispose() {
-          await new Promise((resolve) => setTimeout(resolve, 10));
-          disposalOrder.push(2);
-        },
-      }));
-
-      // Resolve both services
-      await diContainer.resolve(DISPOSABLE_1);
-      await diContainer.resolve(DISPOSABLE_2);
-
-      const startTime = Date.now();
-      await (diContainer as DiContainer).disposeSingletons();
-      const endTime = Date.now();
-
-      // Should complete in roughly 20ms (concurrent), not 30ms (sequential)
-      assert.ok(endTime - startTime < 30, "Should dispose concurrently");
-      assert.equal(disposalOrder.length, 2, "Both services should be disposed");
-      // Service 2 should finish first due to shorter delay
-      assert.equal(disposalOrder[0], 2);
-      assert.equal(disposalOrder[1], 1);
-    });
-
     it("should only dispose singleton services that have been resolved", async () => {
       let unresolvedDisposeCount = 0;
       let resolvedDisposeCount = 0;
@@ -962,46 +1014,6 @@ describe("DiContainer", () => {
       });
     });
 
-    it("should dispose multiple scoped services concurrently", async () => {
-      const disposalOrder: number[] = [];
-      const DISPOSABLE_SCOPED_1 = "DISPOSABLE_SCOPED_1";
-      const DISPOSABLE_SCOPED_2 = "DISPOSABLE_SCOPED_2";
-
-      diConfigurator.addScoped(DISPOSABLE_SCOPED_1, async () => ({
-        name: "service-1",
-        async onDispose() {
-          await new Promise((resolve) => setTimeout(resolve, 20));
-          disposalOrder.push(1);
-        },
-      }));
-
-      diConfigurator.addScoped(DISPOSABLE_SCOPED_2, async () => ({
-        name: "service-2",
-        async onDispose() {
-          await new Promise((resolve) => setTimeout(resolve, 10));
-          disposalOrder.push(2);
-        },
-      }));
-
-      await runScope(async () => {
-        await diContainer.resolve(DISPOSABLE_SCOPED_1);
-        await diContainer.resolve(DISPOSABLE_SCOPED_2);
-
-        const startTime = Date.now();
-        await (diContainer as DiContainer).disposeScopedServices();
-        const endTime = Date.now();
-
-        assert.ok(endTime - startTime < 30, "Should dispose concurrently");
-        assert.equal(
-          disposalOrder.length,
-          2,
-          "Both services should be disposed"
-        );
-        assert.equal(disposalOrder[0], 2);
-        assert.equal(disposalOrder[1], 1);
-      });
-    });
-
     it("should only dispose scoped services that have been resolved", async () => {
       let unresolvedDisposeCount = 0;
       let resolvedDisposeCount = 0;
@@ -1116,6 +1128,81 @@ describe("DiContainer", () => {
           "Third disposal should be safe (no additional calls)"
         );
       });
+    });
+
+    it("should dispose multiple scoped services concurrently", async () => {
+      const disposalOrder: number[] = [];
+      const DISPOSABLE_SCOPED_1 = "DISPOSABLE_SCOPED_1";
+      const DISPOSABLE_SCOPED_2 = "DISPOSABLE_SCOPED_2";
+
+      diConfigurator.addScoped(DISPOSABLE_SCOPED_1, async () => ({
+        name: "service-1",
+        async onDispose() {
+          await new Promise((resolve) => setTimeout(resolve, 20));
+          disposalOrder.push(1);
+        },
+      }));
+
+      diConfigurator.addScoped(DISPOSABLE_SCOPED_2, async () => ({
+        name: "service-2",
+        async onDispose() {
+          await new Promise((resolve) => setTimeout(resolve, 10));
+          disposalOrder.push(2);
+        },
+      }));
+
+      await runScope(async () => {
+        await diContainer.resolve(DISPOSABLE_SCOPED_1);
+        await diContainer.resolve(DISPOSABLE_SCOPED_2);
+
+        const startTime = Date.now();
+        await (diContainer as DiContainer).disposeScopedServices();
+        const endTime = Date.now();
+
+        assert.ok(endTime - startTime < 30, "Should dispose concurrently");
+        assert.equal(
+          disposalOrder.length,
+          2,
+          "Both services should be disposed"
+        );
+        assert.equal(disposalOrder[0], 2);
+        assert.equal(disposalOrder[1], 1);
+      });
+    });
+
+    it("should dispose multiple singleton services concurrently", async () => {
+      const disposalOrder: number[] = [];
+      const DISPOSABLE_1 = "DISPOSABLE_1";
+      const DISPOSABLE_2 = "DISPOSABLE_2";
+
+      diConfigurator.addSingleton(DISPOSABLE_1, async () => ({
+        async onDispose() {
+          await new Promise((resolve) => setTimeout(resolve, 20));
+          disposalOrder.push(1);
+        },
+      }));
+
+      diConfigurator.addSingleton(DISPOSABLE_2, async () => ({
+        async onDispose() {
+          await new Promise((resolve) => setTimeout(resolve, 10));
+          disposalOrder.push(2);
+        },
+      }));
+
+      // Resolve both services
+      await diContainer.resolve(DISPOSABLE_1);
+      await diContainer.resolve(DISPOSABLE_2);
+
+      const startTime = Date.now();
+      await (diContainer as DiContainer).disposeSingletons();
+      const endTime = Date.now();
+
+      // Should complete in roughly 20ms (concurrent), not 30ms (sequential)
+      assert.ok(endTime - startTime < 30, "Should dispose concurrently");
+      assert.equal(disposalOrder.length, 2, "Both services should be disposed");
+      // Service 2 should finish first due to shorter delay
+      assert.equal(disposalOrder[0], 2);
+      assert.equal(disposalOrder[1], 1);
     });
   });
 });
@@ -2727,12 +2814,17 @@ describe("DIContainer | Lifecycle Dependency Validation", () => {
 
     diContainer = await diConfigurator.build();
 
-    await assert.rejects(diContainer.resolve(SINGLETON_TOKEN), (err: Error) => {
-      assert.match(
-        err.message,
-        /Lifecycle dependency violation: singleton service .* cannot depend on scoped service .* Singletons cannot depend on scoped services\./
+    await runScope(async () => {
+      await assert.rejects(
+        diContainer.resolve(SINGLETON_TOKEN),
+        (err: Error) => {
+          assert.match(
+            err.message,
+            /Lifecycle dependency violation: singleton service .* cannot depend on scoped service .* Singletons cannot depend on scoped services\./
+          );
+          return true;
+        }
       );
-      return true;
     });
   });
 
@@ -2748,12 +2840,17 @@ describe("DIContainer | Lifecycle Dependency Validation", () => {
 
     diContainer = await diConfigurator.build();
 
-    await assert.rejects(diContainer.resolve(SINGLETON_TOKEN), (err: Error) => {
-      assert.match(
-        err.message,
-        /Lifecycle dependency violation: singleton service .* cannot depend on scoped service .* Singletons cannot depend on scoped services\./
+    await runScope(async () => {
+      await assert.rejects(
+        diContainer.resolve(SINGLETON_TOKEN),
+        (err: Error) => {
+          assert.match(
+            err.message,
+            /Lifecycle dependency violation: singleton service .* cannot depend on scoped service .* Singletons cannot depend on scoped services\./
+          );
+          return true;
+        }
       );
-      return true;
     });
   });
 
@@ -2769,12 +2866,17 @@ describe("DIContainer | Lifecycle Dependency Validation", () => {
 
     diContainer = await diConfigurator.build();
 
-    await assert.rejects(diContainer.resolve(SINGLETON_TOKEN), (err: Error) => {
-      assert.match(
-        err.message,
-        /Lifecycle dependency violation: singleton service .* cannot depend on scoped service .* Singletons cannot depend on scoped services\./
+    await runScope(async () => {
+      await assert.rejects(
+        diContainer.resolve(SINGLETON_TOKEN),
+        (err: Error) => {
+          assert.match(
+            err.message,
+            /Lifecycle dependency violation: singleton service .* cannot depend on scoped service .* Singletons cannot depend on scoped services\./
+          );
+          return true;
+        }
       );
-      return true;
     });
   });
 
@@ -2861,12 +2963,17 @@ describe("DIContainer | Lifecycle Dependency Validation", () => {
 
     diContainer = await diConfigurator.build();
 
-    await assert.rejects(diContainer.resolve(SINGLETON_TOKEN), (err: Error) => {
-      assert.match(
-        err.message,
-        /Lifecycle dependency violation: singleton service .* cannot depend on scoped service .* Singletons cannot depend on scoped services\./
+    await runScope(async () => {
+      await assert.rejects(
+        diContainer.resolve(SINGLETON_TOKEN),
+        (err: Error) => {
+          assert.match(
+            err.message,
+            /Lifecycle dependency violation: singleton service .* cannot depend on scoped service .* Singletons cannot depend on scoped services\./
+          );
+          return true;
+        }
       );
-      return true;
     });
   });
 });

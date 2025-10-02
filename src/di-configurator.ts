@@ -7,7 +7,6 @@ import {
   IDiModule,
   IInitableDiContainer,
   IScopedServiceRegistrationOptions,
-  ISingletonOptions,
   ELifetime,
   TServiceToken,
   TUseFactory,
@@ -21,9 +20,7 @@ import {
   ServiceRegistration,
 } from "./service-registration";
 import { CrossLifecycleRegistrationError } from "./errors";
-
-export const DI_CONTAINER_REQUEST_SCOPE_NAMESPACE =
-  "APIRATORJS_DI_CONTAINER_REQUEST_SCOPE_NAMESPACE";
+import { DI_CONTAINER_REQUEST_SCOPE_NAMESPACE } from "./constants";
 
 export class DiConfigurator implements IDiConfigurator {
   private readonly _singletonServiceRegistry = new Map<
