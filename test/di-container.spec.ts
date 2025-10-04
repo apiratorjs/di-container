@@ -1939,11 +1939,18 @@ describe("DIContainer | Tag Functionality", () => {
     });
 
     describe("Error Handling", () => {
-      it("should throw UnregisteredDependencyError when no services are registered", async () => {
+      it("should return empty array when no services are registered (resolveAll)", async () => {
+        const NON_EXISTENT_TOKEN = "NON_EXISTENT_ALL_TOKEN";
+
+        const result = await diContainer.resolveAll(NON_EXISTENT_TOKEN);
+        assert.deepEqual(result, []);
+      });
+
+      it("should throw UnregisteredDependencyError when no services are registered (resolveAllRequired)", async () => {
         const NON_EXISTENT_TOKEN = "NON_EXISTENT_ALL_TOKEN";
 
         await assert.rejects(
-          diContainer.resolveAll(NON_EXISTENT_TOKEN),
+          diContainer.resolveAllRequired(NON_EXISTENT_TOKEN),
           (err: any) => {
             assert.ok(err instanceof UnregisteredDependencyError);
             assert.match(

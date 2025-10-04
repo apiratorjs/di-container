@@ -34,11 +34,17 @@ export interface IDiContainer {
 
   resolveAll<T>(token: TServiceToken<T>): Promise<IResolveAllResult<T>[]>;
 
+  resolveAllRequired<T>(
+    token: TServiceToken<T>
+  ): Promise<IResolveAllResult<T>[]>;
+
   resolveTagged<T>(tag: string): Promise<T | undefined>;
 
   resolveTaggedRequired<T>(tag: string): Promise<T>;
 
   resolveAllTagged(tag: string): Promise<IResolveAllResult[]>;
+
+  resolveAllTaggedRequired(tag: string): Promise<IResolveAllResult[]>;
 
   runWithNewRequestScope(
     callback: (diContainer: IDiContainer) => Promise<any> | any,

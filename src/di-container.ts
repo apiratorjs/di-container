@@ -104,27 +104,7 @@ export class DiContainer implements IInitableDiContainer {
   }
 
   public async resolveAllTagged(tag: string): Promise<IResolveAllResult[]> {
-    const normalizedTag = normalizeTagToCompatibleFormat(tag);
-    const serviceRegistrationList = this._diConfigurator
-      .getDiscoveryService()
-      .getAll()
-      .filter(
-        (serviceRegistration) => serviceRegistration.tag === normalizedTag
-      );
-
-    if (!serviceRegistrationList.length) {
-      return [];
-    }
-
-    const results = await Promise.all(
-      serviceRegistrationList.map((serviceRegistration) =>
-        this.resolve(serviceRegistration.token, serviceRegistration.tag)
-      )
-    );
-
-    return results.filter(
-      (result): result is IResolveAllResult => result !== undefined
-    );
+    return this.runResolutionAllTagged(tag, false);
   }
 
   public async runWithNewRequestScope(
@@ -226,6 +206,16 @@ export class DiContainer implements IInitableDiContainer {
     await Promise.all(disposalPromises);
   }
 
+  public resolveAllRequired<T>(
+    token: TServiceToken<T>
+  ): Promise<IResolveAllResult<T>[]> {
+    return this.runResolutionAll<T>(token, true);
+  }
+
+  public resolveAllTaggedRequired(tag: string): Promise<IResolveAllResult[]> {
+    return this.runResolutionAllTagged(tag, true);
+  }
+
   public async init(): Promise<void> {
     if (this._isInitialized) {
       return;
@@ -267,7 +257,8 @@ export class DiContainer implements IInitableDiContainer {
   }
 
   private async runResolutionAll<T>(
-    token: TServiceToken
+    token: TServiceToken,
+    throwErrorIfNoServices: boolean = false
   ): Promise<IResolveAllResult<T>[]> {
     const singletonServices = await this.getSingletonAll<T>(token);
     if (singletonServices.length > 0) {
@@ -284,7 +275,42 @@ export class DiContainer implements IInitableDiContainer {
       return transientServices;
     }
 
-    throw new UnregisteredDependencyError(token);
+    if (throwErrorIfNoServices) {
+      throw new UnregisteredDependencyError(token);
+    }
+
+    return [];
+  }
+
+  private async runResolutionAllTagged<T>(
+    tag: string,
+    throwErrorIfNoServices: boolean = false
+  ): Promise<IResolveAllResult[]> {
+    const normalizedTag = normalizeTagToCompatibleFormat(tag);
+    const serviceRegistrationList = this._diConfigurator
+      .getDiscoveryService()
+      .getAll()
+      .filter(
+        (serviceRegistration) => serviceRegistration.tag === normalizedTag
+      );
+
+    if (!serviceRegistrationList.length) {
+      if (throwErrorIfNoServices) {
+        throw new UnregisteredDependencyError(tag);
+      }
+
+      return [];
+    }
+
+    const results = await Promise.all(
+      serviceRegistrationList.map((serviceRegistration) =>
+        this.resolve(serviceRegistration.token, serviceRegistration.tag)
+      )
+    );
+
+    return results.filter(
+      (result): result is IResolveAllResult => result !== undefined
+    );
   }
 
   private getMutexFor(token: string): Mutex {

@@ -140,16 +140,12 @@ const scopedService = await container.resolve("SCOPED_SERVICE"); // Error!
 **Service Tags (Optional):** Register multiple implementations when needed. If no tag is specified, services automatically get the "default" tag:
 
 ```typescript
-configurator.addSingleton(
-  "PAYMENT",
-  () => new StripePayment(),
-  { tag: "stripe" }
-);
-configurator.addSingleton(
-  "PAYMENT",
-  () => new PayPalPayment(),
-  { tag: "paypal" }
-);
+configurator.addSingleton("PAYMENT", () => new StripePayment(), {
+  tag: "stripe",
+});
+configurator.addSingleton("PAYMENT", () => new PayPalPayment(), {
+  tag: "paypal",
+});
 configurator.addSingleton("PAYMENT", () => new BankPayment()); // Gets "default" tag automatically
 ```
 
@@ -163,11 +159,9 @@ configurator.addSingleton("DATABASE", () => new PostgresDatabase());
 configurator.addSingleton("DATABASE", () => new MySQLDatabase()); // MySQL wins
 
 // Different tags don't override each other
-configurator.addSingleton(
-  "DATABASE",
-  () => new MongoDatabase(),
-  { tag: "nosql" }
-); // Separate service
+configurator.addSingleton("DATABASE", () => new MongoDatabase(), {
+  tag: "nosql",
+}); // Separate service
 ```
 
 **Lifecycle Hooks:** Services can implement `onConstruct()` and `onDispose()` for automatic initialization and cleanup.
@@ -178,43 +172,46 @@ The `IDiConfigurator` is the main interface for configuring dependency injection
 
 ### Service Registration Methods
 
-| Method                                                                                | Description                                                   | Example                                                                  |
-| ------------------------------------------------------------------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| `addSingleton<T>(token, factory, options?): this`                                    | Register a singleton service (tag in options, defaults to "default") | `configurator.addSingleton("DB", () => new Database(), { eager: true })` |
-| `addScoped<T>(token, factory, options?): this`                                       | Register a request-scoped service (tag in options, defaults to "default") | `configurator.addScoped("USER_CTX", async (container) => new UserContext())` |
-| `addTransient<T>(token, factory, options?): this`                                    | Register a transient service (tag in options, defaults to "default") | `configurator.addTransient("LOGGER", () => new Logger(), { tag: "console" })` |
-| `addModule(module): this`                                                             | Register a module (calls module.register(configurator))       | `configurator.addModule(new DatabaseModule())`                           |
+| Method                                            | Description                                                               | Example                                                                       |
+| ------------------------------------------------- | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `addSingleton<T>(token, factory, options?): this` | Register a singleton service (tag in options, defaults to "default")      | `configurator.addSingleton("DB", () => new Database(), { eager: true })`      |
+| `addScoped<T>(token, factory, options?): this`    | Register a request-scoped service (tag in options, defaults to "default") | `configurator.addScoped("USER_CTX", async (container) => new UserContext())`  |
+| `addTransient<T>(token, factory, options?): this` | Register a transient service (tag in options, defaults to "default")      | `configurator.addTransient("LOGGER", () => new Logger(), { tag: "console" })` |
+| `addModule(module): this`                         | Register a module (calls module.register(configurator))                   | `configurator.addModule(new DatabaseModule())`                                |
 
 #### Options Interfaces
 
 **ISingletonServiceRegistrationOptions** (for `addSingleton`):
+
 ```typescript
 interface ISingletonServiceRegistrationOptions {
-  tag?: string;      // Service tag (defaults to "default")
-  eager?: boolean;   // Should the singleton be eagerly created during container build
+  tag?: string; // Service tag (defaults to "default")
+  eager?: boolean; // Should the singleton be eagerly created during container build
 }
 ```
 
 **IScopedServiceRegistrationOptions** (for `addScoped`):
+
 ```typescript
 interface IScopedServiceRegistrationOptions {
-  tag?: string;      // Service tag (defaults to "default")
+  tag?: string; // Service tag (defaults to "default")
 }
 ```
 
 **ITransientServiceRegistrationOptions** (for `addTransient`):
+
 ```typescript
 interface ITransientServiceRegistrationOptions {
-  tag?: string;      // Service tag (defaults to "default")
+  tag?: string; // Service tag (defaults to "default")
 }
 ```
 
 ### Container Management Methods
 
-| Method                                    | Description                 | Returns                                        |
-| ----------------------------------------- | --------------------------- | ---------------------------------------------- |
+| Method                                        | Description                 | Returns                                                                        |
+| --------------------------------------------- | --------------------------- | ------------------------------------------------------------------------------ |
 | `build<T extends IBuildOptions>(options?: T)` | Build the runtime container | `Promise<T extends { autoInit: false } ? IInitableDiContainer : IDiContainer>` |
-| `getDiscoveryService()`                   | Get discovery service       | `DiDiscoveryService` for service introspection |
+| `getDiscoveryService()`                       | Get discovery service       | `DiDiscoveryService` for service introspection                                 |
 
 ### Practical Example
 
@@ -259,9 +256,57 @@ The `IDiContainer` is the runtime interface for resolving services after buildin
 | `resolve<T>(token, tag?)`         | Resolve a service (optional)                   | `Promise<T \| undefined>`         |
 | `resolveRequired<T>(token, tag?)` | Resolve a service (throws if not found)        | `Promise<T>`                      |
 | `resolveAll<T>(token)`            | Resolve all implementations with metadata      | `Promise<IResolveAllResult<T>[]>` |
+| `resolveAllRequired<T>(token)`    | Resolve all implementations (throws if none found) | `Promise<IResolveAllResult<T>[]>` |
 | `resolveTagged<T>(tag)`           | Resolve first service with tag                 | `Promise<T \| undefined>`         |
 | `resolveTaggedRequired<T>(tag)`   | Resolve service with tag (throws if not found) | `Promise<T>`                      |
 | `resolveAllTagged(tag)`           | Resolve all services with tag and metadata     | `Promise<IResolveAllResult[]>`    |
+| `resolveAllTaggedRequired(tag)`   | Resolve all services with tag (throws if none found) | `Promise<IResolveAllResult[]>`    |
+
+#### Optional vs Required Resolution
+
+The DI container provides two variants for each resolution method:
+
+**Optional Methods** (`resolve`, `resolveAll`, `resolveTagged`, `resolveAllTagged`):
+- Return `undefined` or empty array when no services are found
+- Suitable for optional dependencies or graceful degradation scenarios
+- No exceptions thrown for missing services
+
+**Required Methods** (`resolveRequired`, `resolveAllRequired`, `resolveTaggedRequired`, `resolveAllTaggedRequired`):
+- Throw `UnregisteredDependencyError` when no services are found
+- Suitable for critical dependencies that must exist
+- Fail-fast approach for better error detection
+
+```typescript
+// Optional resolution - graceful handling
+const optionalLogger = await container.resolve("LOGGER");
+if (optionalLogger) {
+  optionalLogger.log("Service available");
+} else {
+  console.log("Logger not available, using console");
+}
+
+// Required resolution - fail-fast
+try {
+  const requiredDatabase = await container.resolveRequired("DATABASE");
+  // Guaranteed to have database instance here
+  await requiredDatabase.connect();
+} catch (error) {
+  console.error("Critical dependency missing:", error.message);
+  process.exit(1);
+}
+
+// Optional multiple resolution
+const optionalPayments = await container.resolveAll("PAYMENT");
+console.log(`Found ${optionalPayments.length} payment processors`); // Could be 0
+
+// Required multiple resolution
+try {
+  const requiredPayments = await container.resolveAllRequired("PAYMENT");
+  console.log(`Using ${requiredPayments.length} payment processors`); // At least 1
+} catch (error) {
+  console.error("No payment processors available!"); // Critical error
+}
+```
 
 ### Runtime Management Methods
 
@@ -509,7 +554,103 @@ await container.runWithNewRequestScope(async (container) => {
 // ❌ This would throw RequestScopeResolutionError:
 // const userService = await container.resolve("USER_SERVICE"); // Error!
 
-await container.dispose(); // Cleanup
+await container.dispose(); // Cleanup all services
+```
+
+### Advanced Disposal Management
+
+The DI container provides granular control over service disposal with three disposal methods:
+
+#### Complete Disposal: `dispose()`
+
+Disposes all services (both singletons and scoped services in current request scope):
+
+```typescript
+const container = await configurator.build();
+
+// Use services...
+
+// Dispose everything when shutting down
+await container.dispose(); // Calls both disposeSingletons() and disposeScopedServices()
+```
+
+#### Singleton-Only Disposal: `disposeSingletons()`
+
+Disposes only singleton services and clears their instances. Useful for:
+
+- Partial cleanup scenarios
+- Restarting singleton services without affecting scoped services
+- Memory management in long-running applications
+
+```typescript
+const container = await configurator.build();
+
+// Use singleton services...
+const config = await container.resolve("CONFIG");
+const database = await container.resolve("DATABASE");
+
+// Later, dispose only singletons (e.g., for hot reload or reconfiguration)
+await container.disposeSingletons();
+
+// Singletons are now disposed and will be recreated on next resolution
+const newDatabase = await container.resolve("DATABASE"); // Creates new instance
+```
+
+#### Scoped-Only Disposal: `disposeScopedServices()`
+
+Disposes only scoped services in the current request scope. Useful for:
+
+- Manual cleanup before request scope ends
+- Early resource release in long-running request scopes
+- Custom request lifecycle management
+
+```typescript
+await container.runWithNewRequestScope(async (container) => {
+  // Use scoped services
+  const userContext = await container.resolve("USER_CONTEXT");
+  const sessionData = await container.resolve("SESSION_DATA");
+
+  // Perform some operations...
+
+  // Manually dispose scoped services before scope naturally ends
+  await container.disposeScopedServices();
+
+  // Scoped services are now disposed, but scope is still active
+  // Resolving them again will create new instances
+  const newUserContext = await container.resolve("USER_CONTEXT"); // Creates new instance
+}, new AsyncContextStore());
+```
+
+#### Use Cases for Granular Disposal
+
+**Hot Reload/Reconfiguration:**
+
+```typescript
+// Dispose and recreate only configuration-related singletons
+await container.disposeSingletons();
+// Next resolution will create fresh instances with new configuration
+```
+
+**Memory Management:**
+
+```typescript
+await container.runWithNewRequestScope(async (container) => {
+  // Process large dataset
+  const processor = await container.resolve("DATA_PROCESSOR");
+  await processor.processLargeDataset();
+
+  // Free memory early by disposing scoped services
+  await container.disposeScopedServices();
+
+  // Continue with lightweight operations...
+}, new AsyncContextStore());
+```
+
+**Testing Scenarios:**
+
+```typescript
+// Clean up between test cases
+await container.disposeSingletons(); // Reset all singleton state
 ```
 
 ### Working with Multiple Service Implementations
@@ -520,21 +661,15 @@ When you register multiple implementations of the same service with different ta
 const configurator = new DiConfigurator();
 
 // Register multiple payment processors
-configurator.addSingleton(
-  "PAYMENT",
-  () => new StripePayment(),
-  { tag: "stripe" }
-);
-configurator.addSingleton(
-  "PAYMENT",
-  () => new PayPalPayment(),
-  { tag: "paypal" }
-);
-configurator.addSingleton(
-  "PAYMENT",
-  () => new BankTransferPayment(),
-  { tag: "bank" }
-);
+configurator.addSingleton("PAYMENT", () => new StripePayment(), {
+  tag: "stripe",
+});
+configurator.addSingleton("PAYMENT", () => new PayPalPayment(), {
+  tag: "paypal",
+});
+configurator.addSingleton("PAYMENT", () => new BankTransferPayment(), {
+  tag: "bank",
+});
 configurator.addSingleton("PAYMENT", () => new CashPayment()); // No tag specified = "default" tag
 
 const container = await configurator.build();
@@ -555,9 +690,25 @@ paymentResults.forEach((result) => {
 // Extract just the instances if you only need them
 const paymentInstances = paymentResults.map((result) => result.instance);
 
+// Or use resolveAllRequired to ensure at least one implementation exists
+try {
+  const requiredPayments = await container.resolveAllRequired("PAYMENT");
+  console.log(`Guaranteed to have ${requiredPayments.length} payment processors`);
+} catch (error) {
+  console.error("No payment processors registered!"); // Throws UnregisteredDependencyError
+}
+
 // Or resolve all services with a specific tag
 const stripeResults = await container.resolveAllTagged("stripe");
 console.log(`Found ${stripeResults.length} services with 'stripe' tag`);
+
+// Use resolveAllTaggedRequired to ensure services with specific tag exist
+try {
+  const requiredStripeServices = await container.resolveAllTaggedRequired("stripe");
+  console.log(`Guaranteed to have ${requiredStripeServices.length} stripe services`);
+} catch (error) {
+  console.error("No services with 'stripe' tag found!"); // Throws UnregisteredDependencyError
+}
 
 // Resolve services with the default tag
 const defaultResults = await container.resolveAllTagged("default");
@@ -637,7 +788,9 @@ class UserModule implements IDiModule {
   register(configurator: DiConfigurator): void {
     configurator.addSingleton(USER_SERVICE, async (container) => {
       const logger = await container.resolveRequired<ILogger>(LOGGER);
-      const authService = await container.resolveRequired<IAuthService>(AUTH_SERVICE);
+      const authService = await container.resolveRequired<IAuthService>(
+        AUTH_SERVICE
+      );
       return new UserServiceImpl(logger, authService);
     });
   }
