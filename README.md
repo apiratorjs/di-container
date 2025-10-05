@@ -272,7 +272,8 @@ The DI container provides two variants for each resolution method:
 - No exceptions thrown for missing services
 
 **Required Methods** (`resolveRequired`, `resolveAllRequired`, `resolveTaggedRequired`, `resolveAllTaggedRequired`):
-- Throw `UnregisteredDependencyError` when no services are found
+- `resolveRequired` and `resolveAllRequired` throw `UnregisteredDependencyError` when no services are found
+- `resolveTaggedRequired` and `resolveAllTaggedRequired` throw `UnregisteredTagError` when no services with the specified tag are found
 - Suitable for critical dependencies that must exist
 - Fail-fast approach for better error detection
 
@@ -707,7 +708,7 @@ try {
   const requiredStripeServices = await container.resolveAllTaggedRequired("stripe");
   console.log(`Guaranteed to have ${requiredStripeServices.length} stripe services`);
 } catch (error) {
-  console.error("No services with 'stripe' tag found!"); // Throws UnregisteredDependencyError
+  console.error("No services with 'stripe' tag found!"); // Throws UnregisteredTagError
 }
 
 // Resolve services with the default tag

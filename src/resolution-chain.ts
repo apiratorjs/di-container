@@ -53,7 +53,7 @@ export class ResolutionChain {
       const cycle = this._chain
         .map((t) => tokenToString(t.token))
         .concat(tokenToString(link.token));
-      throw new CircularDependencyError(link.token, cycle);
+      throw new CircularDependencyError(link.token, cycle, link.tag);
     }
   }
 
@@ -74,7 +74,9 @@ export class ResolutionChain {
         dependentLink.token,
         dependentLink.lifetime,
         link.token,
-        link.lifetime
+        link.lifetime,
+        dependentLink.tag,
+        link.tag
       );
     }
 

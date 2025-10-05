@@ -243,7 +243,8 @@ export class DiConfigurator implements IDiConfigurator {
         throw new CrossLifecycleRegistrationError(
           token,
           lifetime,
-          attemptedLifecycle
+          attemptedLifecycle,
+          tag
         );
       }
     }

@@ -11,6 +11,7 @@ import {
   IOnDispose,
   TServiceToken,
   UnregisteredDependencyError,
+  UnregisteredTagError,
 } from "../src";
 
 describe("DiContainer", () => {
@@ -2418,14 +2419,14 @@ describe("DIContainer | Tag Functionality", () => {
           name: "scoped-service",
           lifecycle: "scoped",
         }));
-      }, /Cannot register token 'SHARED_TOKEN' as scoped because it is already registered as singleton/);
+      }, /Cannot register token 'SHARED_TOKEN' \(tag: 'default'\) as scoped because it is already registered as singleton/);
 
       assert.throws(() => {
         diConfigurator.addTransient(SHARED_TOKEN, async () => ({
           name: "transient-service",
           lifecycle: "transient",
         }));
-      }, /Cannot register token 'SHARED_TOKEN' as transient because it is already registered as singleton/);
+      }, /Cannot register token 'SHARED_TOKEN' \(tag: 'default'\) as transient because it is already registered as singleton/);
     });
 
     it("should forbid same token with different tags across different lifecycles", async () => {
@@ -2441,7 +2442,7 @@ describe("DIContainer | Tag Functionality", () => {
         diConfigurator.addScoped(TOKEN, async () => ({ lifecycle: "scoped" }), {
           tag: "scoped-tag",
         });
-      }, /Cannot register token 'LIFECYCLE_TAG_TOKEN' as scoped because it is already registered as singleton/);
+      }, /Cannot register token 'LIFECYCLE_TAG_TOKEN' \(tag: 'scoped-tag'\) as scoped because it is already registered as singleton/);
 
       assert.throws(() => {
         diConfigurator.addTransient(
@@ -2449,7 +2450,7 @@ describe("DIContainer | Tag Functionality", () => {
           async () => ({ lifecycle: "transient" }),
           { tag: "transient-tag" }
         );
-      }, /Cannot register token 'LIFECYCLE_TAG_TOKEN' as transient because it is already registered as singleton/);
+      }, /Cannot register token 'LIFECYCLE_TAG_TOKEN' \(tag: 'transient-tag'\) as transient because it is already registered as singleton/);
     });
 
     it("should throw CrossLifecycleRegistrationError with correct error type", async () => {
@@ -2482,11 +2483,11 @@ describe("DIContainer | Tag Functionality", () => {
         diConfigurator.addScoped(TOKEN, async () => ({ type: "scoped" }), {
           tag: "completely-different-tag",
         });
-      }, /Cannot register token 'STRICT_TOKEN' as scoped because it is already registered as singleton/);
+      }, /Cannot register token 'STRICT_TOKEN' \(tag: 'completely-different-tag'\) as scoped because it is already registered as singleton/);
 
       assert.throws(() => {
         diConfigurator.addTransient(TOKEN, async () => ({ type: "transient" }));
-      }, /Cannot register token 'STRICT_TOKEN' as transient because it is already registered as singleton/);
+      }, /Cannot register token 'STRICT_TOKEN' \(tag: 'default'\) as transient because it is already registered as singleton/);
     });
   });
 

@@ -16,6 +16,7 @@ import { Mutex } from "@apiratorjs/locking";
 import {
   RequestScopeResolutionError,
   UnregisteredDependencyError,
+  UnregisteredTagError,
 } from "./errors";
 import { normalizeTagToCompatibleFormat, tokenToString } from "./utils";
 import { ServiceRegistration } from "./service-registration";
@@ -55,7 +56,7 @@ export class DiContainer implements IInitableDiContainer {
   ): Promise<T> {
     const service = await this.resolve<T>(token, tag);
     if (!service) {
-      throw new UnregisteredDependencyError(token);
+      throw new UnregisteredDependencyError(token, tag);
     }
 
     return service;
@@ -97,7 +98,7 @@ export class DiContainer implements IInitableDiContainer {
   public async resolveTaggedRequired<T>(tag: string): Promise<T> {
     const service = await this.resolveTagged<T>(tag);
     if (!service) {
-      throw new UnregisteredDependencyError(tag);
+      throw new UnregisteredTagError(tag);
     }
 
     return service;
@@ -251,7 +252,7 @@ export class DiContainer implements IInitableDiContainer {
       (await this.tryGetScoped<T>(token, tag)) ??
       (await this.tryGetTransient<T>(token, tag)) ??
       (function (): never {
-        throw new UnregisteredDependencyError(token);
+        throw new UnregisteredDependencyError(token, tag);
       })()
     );
   }
@@ -296,7 +297,7 @@ export class DiContainer implements IInitableDiContainer {
 
     if (!serviceRegistrationList.length) {
       if (throwErrorIfNoServices) {
-        throw new UnregisteredDependencyError(tag);
+        throw new UnregisteredTagError(tag);
       }
 
       return [];
@@ -461,7 +462,7 @@ export class DiContainer implements IInitableDiContainer {
     // Check scope context after finding the service registration to prevent unexpected calling
     // when trying to resolve another service from a different lifecycle
     if (!this.isInRequestScopeContext()) {
-      throw new RequestScopeResolutionError(token);
+      throw new RequestScopeResolutionError(token, tag);
     }
 
     if (serviceRegistration.isResolved) {
